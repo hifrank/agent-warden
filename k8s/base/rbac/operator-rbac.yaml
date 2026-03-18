@@ -1,0 +1,59 @@
+# Platform ClusterRoles for Agent Warden operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-agent-warden-operator
+  labels:
+    app.kubernetes.io/part-of: agent-warden
+rules:
+  # Manage tenant namespaces
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  # Manage StatefulSets, Services, ConfigMaps in tenant namespaces
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Manage NetworkPolicies
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Manage ResourceQuotas and LimitRanges
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Read pods/logs for health checks
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec", "events"]
+    verbs: ["get", "list", "watch"]
+  # Manage SecretProviderClass (Secrets Store CSI)
+  - apiGroups: ["secrets-store.csi.x-k8s.io"]
+    resources: ["secretproviderclasses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Manage OpenClawTenant CRD instances
+  - apiGroups: ["openclaw.io"]
+    resources: ["openclawtenants", "openclawtenants/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # ServiceAccounts for Workload Identity
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-agent-warden-operator
+  labels:
+    app.kubernetes.io/part-of: agent-warden
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agent-agent-warden-operator
+subjects:
+  - kind: ServiceAccount
+    name: agent-warden-operator
+    namespace: agent-warden-system

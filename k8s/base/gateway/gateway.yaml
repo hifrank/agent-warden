@@ -1,0 +1,42 @@
+# Gateway API base resources for Application Gateway for Containers (AGC)
+# The ALB Controller reconciles these into AGC infrastructure configuration.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: azure-alb-external
+spec:
+  controllerName: alb.networking.azure.io/alb-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: agent-warden-gateway
+  namespace: agent-warden-system
+  annotations:
+    alb.networking.azure.io/alb-namespace: agent-warden-system
+    alb.networking.azure.io/alb-name: agent-warden-alb
+spec:
+  gatewayClassName: azure-alb-external
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: agent-warden-tls
+            namespace: agent-warden-system
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              openclaw.io/tenant: "true"
+    - name: http-redirect
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same

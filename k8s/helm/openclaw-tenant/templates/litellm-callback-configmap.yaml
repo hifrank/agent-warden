@@ -1,0 +1,141 @@
+{{- if .Values.litellmProxy.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-callback-{{ .Values.tenantId }}
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+data:
+  custom_callback.py: |
+    """LiteLLM custom callback – emits structured data.llm events to stdout + Cosmos DB."""
+    import json
+    import sys
+    import os
+    import uuid
+    import threading
+    from datetime import datetime, timezone
+    from litellm.integrations.custom_logger import CustomLogger
+
+    # ── Cosmos DB REST writer (uses Managed Identity via Azure IMDS) ──
+
+    _cosmos_endpoint = os.environ.get("COSMOS_ENDPOINT", "")
+    _cosmos_database = os.environ.get("COSMOS_DATABASE", "agent-warden")
+    _cosmos_container = "governance"
+    _cosmos_token_cache = {"token": None, "expires_at": 0}
+    _cosmos_lock = threading.Lock()
+
+    def _get_cosmos_token():
+        """Acquire Cosmos DB token via Workload Identity federated token exchange."""
+        import time
+        import urllib.parse
+        now = time.time()
+        with _cosmos_lock:
+            if _cosmos_token_cache["token"] and _cosmos_token_cache["expires_at"] > now + 60:
+                return _cosmos_token_cache["token"]
+        try:
+            import urllib.request
+            token_file = os.environ.get("AZURE_FEDERATED_TOKEN_FILE", "")
+            client_id = os.environ.get("AZURE_CLIENT_ID", "")
+            tenant_id = os.environ.get("AZURE_TENANT_ID", "")
+            authority = os.environ.get("AZURE_AUTHORITY_HOST", "https://login.microsoftonline.com/")
+            if not (token_file and client_id and tenant_id):
+                return None
+            with open(token_file, "r") as f:
+                federated_token = f.read().strip()
+            token_url = f"{authority.rstrip('/')}/{tenant_id}/oauth2/v2.0/token"
+            body = urllib.parse.urlencode({
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+                "client_assertion": federated_token,
+                "scope": "https://cosmos.azure.com/.default",
+            }).encode("utf-8")
+            req = urllib.request.Request(token_url, data=body, method="POST")
+            req.add_header("Content-Type", "application/x-www-form-urlencoded")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+            with _cosmos_lock:
+                _cosmos_token_cache["token"] = data["access_token"]
+                _cosmos_token_cache["expires_at"] = now + int(data.get("expires_in", 3600)) - 120
+            return data["access_token"]
+        except Exception:
+            return None
+
+    def _write_to_cosmos(event):
+        """Best-effort write event doc to Cosmos governance container via REST API."""
+        if not _cosmos_endpoint:
+            return
+        token = _get_cosmos_token()
+        if not token:
+            return
+        try:
+            import urllib.request
+            url = (
+                f"{_cosmos_endpoint}/dbs/{_cosmos_database}"
+                f"/colls/{_cosmos_container}/docs"
+            )
+            body = json.dumps(event).encode("utf-8")
+            req = urllib.request.Request(url, data=body, method="POST")
+            req.add_header("Authorization", f"type%3Daad%26ver%3D1.0%26sig%3D{token}")
+            req.add_header("Content-Type", "application/json")
+            req.add_header("x-ms-version", "2020-07-15")
+            req.add_header("x-ms-documentdb-partitionkey", json.dumps([event.get("tenantId", "")]))
+            urllib.request.urlopen(req, timeout=5)
+        except Exception:
+            pass
+
+    # ── Callback class ──
+
+    class DataLLMCallback(CustomLogger):
+        def __init__(self):
+            self.tenant_id = os.environ.get("TENANT_ID", "")
+
+        def _emit(self, kwargs, response_obj, start_time, end_time):
+            try:
+                usage = getattr(response_obj, "usage", None)
+                model = kwargs.get("model", "unknown")
+                litellm_params = kwargs.get("litellm_params", {})
+
+                metadata = kwargs.get("metadata", {}) or {}
+                trace_id = (
+                    metadata.get("trace_id")
+                    or metadata.get("x-trace-id")
+                    or kwargs.get("litellm_call_id", "")
+                )
+
+                duration_ms = 0
+                if start_time and end_time:
+                    duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+                event = {
+                    "id": str(uuid.uuid4()),
+                    "type": "data.llm",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "tenantId": self.tenant_id,
+                    "traceId": trace_id,
+                    "model": model,
+                    "provider": litellm_params.get("custom_llm_provider", "azure-openai"),
+                    "promptTokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
+                    "completionTokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+                    "durationMs": duration_ms,
+                    "_lineagePushed": False,
+                }
+
+                # Stdout (Container Insights)
+                sys.stdout.write(json.dumps(event) + "\n")
+                sys.stdout.flush()
+
+                # Cosmos DB (direct write for lineage aggregator)
+                _write_to_cosmos(event)
+            except Exception:
+                pass
+
+        def log_success_event(self, kwargs, response_obj, start_time, end_time):
+            self._emit(kwargs, response_obj, start_time, end_time)
+
+        async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+            self._emit(kwargs, response_obj, start_time, end_time)
+
+    data_llm_callback = DataLLMCallback()
+{{- end }}

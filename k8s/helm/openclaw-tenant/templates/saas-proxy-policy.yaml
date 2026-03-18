@@ -1,0 +1,39 @@
+{{- if .Values.saasProxy.enabled }}
+# SaaS Auth Proxy path policy per tenant (§18.7.3)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: saas-proxy-policy-{{ .Values.tenantId }}
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+data:
+  policy.json: |
+    [
+      {
+        "provider": "google",
+        "allow": {{ .Values.saasProxy.policies.google.allow | toJson }},
+        "deny": {{ .Values.saasProxy.policies.google.deny | toJson }}
+      },
+      {
+        "provider": "graph",
+        "allow": {{ .Values.saasProxy.policies.graph.allow | toJson }},
+        "deny": {{ .Values.saasProxy.policies.graph.deny | toJson }}
+      },
+      {
+        "provider": "sfdc",
+        "allow": {{ .Values.saasProxy.policies.sfdc.allow | toJson }},
+        "deny": {{ .Values.saasProxy.policies.sfdc.deny | toJson }}
+      },
+      {
+        "provider": "slack",
+        "allow": {{ .Values.saasProxy.policies.slack.allow | toJson }},
+        "deny": {{ .Values.saasProxy.policies.slack.deny | toJson }}
+      },
+      {
+        "provider": "github",
+        "allow": {{ .Values.saasProxy.policies.github.allow | toJson }},
+        "deny": {{ .Values.saasProxy.policies.github.deny | toJson }}
+      }
+    ]
+{{- end }}

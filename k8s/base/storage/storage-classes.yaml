@@ -1,0 +1,40 @@
+# StorageClasses for tenant persistent volumes (§4.5.4)
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-premium-zrs
+  labels:
+    app.kubernetes.io/part-of: agent-warden
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: Premium_ZRS
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-premium-lrs
+  labels:
+    app.kubernetes.io/part-of: agent-warden
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: PremiumV2_LRS
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-standard-zrs
+  labels:
+    app.kubernetes.io/part-of: agent-warden
+provisioner: disk.csi.azure.com
+parameters:
+  skuName: StandardSSD_ZRS
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer

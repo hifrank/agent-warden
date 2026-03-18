@@ -1,0 +1,65 @@
+tenantId: demo-tenant
+tier: pro
+
+image:
+  repository: acragentwardendev.azurecr.io/openclaw
+  tag: "2026.3.12"
+
+keyVault:
+  name: kv-demo-tenant
+  tenantIdEntra: "9a72f9b7-227c-4b28-9aca-de6c1ec605a4"
+  clientId: "a93104bc-6251-461f-93af-67a7ac26205f"
+
+cosmos:
+  endpoint: "https://cosmos-agentwarden-dev.documents.azure.com:443/"
+  database: "agent-warden"
+
+azureOpenAI:
+  enabled: true
+  endpoint: "https://aoai-agentwarden-dev.openai.azure.com/"
+  deploymentName: "gpt-4o"
+  baseModel: "gpt-4o"    # actual Azure model behind the deployment
+  apiVersion: "2024-10-21"
+
+memoryIndexRebuild:
+  enabled: false
+
+litellmProxy:
+  enabled: true
+  masterKey: "CHANGE-ME"
+  logLevel: "INFO"     # DEBUG for troubleshooting
+  image:
+    repository: litellm/litellm
+    tag: "v1.82.0-stable"
+    pullPolicy: IfNotPresent
+
+# -- DLP plugin: Microsoft Purview processContent API (cross-tenant)
+# mode: "enforce" (default) = block PII, streaming OFF | "audit" = async log only, streaming ON
+purviewDlpPlugin:
+  enabled: true
+  mode: "enforce"
+  layers:
+    promptGuard: true
+    outputScanner: true
+    inputAudit: true
+  purviewEnabled: true
+  purviewUserId: "7ade9412-3a6e-4b37-a3a8-51d8f81de596"
+  purviewTenantId: "2cf24558-0d31-439b-9c8d-6fdce3931ae7"
+  image:
+    repository: acragentwardendev.azurecr.io/purview-dlp-plugin
+    tag: "0.4.0"
+    pullPolicy: Always
+
+# -- SaaS proxy sidecar: intercepts outbound SaaS API calls (§18.7)
+saasProxy:
+  enabled: true
+  port: 9090
+  logLevel: "info"
+  image:
+    repository: acragentwardendev.azurecr.io/agent-warden-saas-proxy
+    tag: "latest"
+    pullPolicy: Always
+
+# -- Sandbox disabled: simplify for pure OpenClaw
+sandbox:
+  enabled: false

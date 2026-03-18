@@ -1,0 +1,28 @@
+{{- if .Values.litellmProxy.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config-{{ .Values.tenantId }}
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    model_list:
+      {{- if .Values.azureOpenAI.enabled }}
+      - model_name: {{ .Values.azureOpenAI.deploymentName }}
+        litellm_params:
+          model: azure/{{ .Values.azureOpenAI.deploymentName }}
+          api_base: {{ .Values.azureOpenAI.endpoint | trimSuffix "/" }}
+          api_version: {{ .Values.azureOpenAI.apiVersion | quote }}
+          base_model: {{ .Values.azureOpenAI.baseModel | default "gpt-4o" | quote }}
+      {{- end }}
+
+    litellm_settings:
+      drop_params: true
+      telemetry: false
+      enable_azure_ad_token_refresh: true
+      callbacks: ["custom_callback.data_llm_callback"]
+
+    general_settings: {}
+{{- end }}

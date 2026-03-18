@@ -1,0 +1,189 @@
+# -- Tenant configuration
+tenantId: ""
+tier: "free"  # free | pro | enterprise
+
+# -- OpenClaw image
+image:
+  repository: ghcr.io/openclaw/openclaw
+  tag: "2026.3.12"
+  pullPolicy: IfNotPresent
+
+# -- Resource limits per tier
+resources:
+  free:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+  pro:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+  enterprise:
+    requests:
+      cpu: "1"
+      memory: "2Gi"
+    limits:
+      cpu: "4"
+      memory: "8Gi"
+
+# -- Persistent storage per tier (§4.5.5)
+storage:
+  free:
+    stateSize: "2Gi"
+    workspaceSize: "3Gi"
+    storageClass: "managed-premium-lrs"
+  pro:
+    stateSize: "20Gi"
+    workspaceSize: "30Gi"
+    storageClass: "managed-premium-zrs"
+  enterprise:
+    stateSize: "100Gi"
+    workspaceSize: "400Gi"
+    storageClass: "managed-premium-zrs"
+
+# -- Azure Key Vault for secrets injection
+keyVault:
+  name: ""
+  tenantIdEntra: ""
+  clientId: ""
+
+# -- Cosmos DB governance container (for data.activity + data.llm → lineage aggregator)
+cosmos:
+  endpoint: ""              # e.g. https://cosmos-agentwarden-dev.documents.azure.com:443/
+  database: "agent-warden"
+
+# -- Azure OpenAI configuration
+azureOpenAI:
+  enabled: false
+  endpoint: ""            # e.g. https://aoai-agentwarden-dev.openai.azure.com/
+  deploymentName: "gpt-54"
+  baseModel: "gpt-4o"     # underlying model for token limits & cost tracking
+  apiVersion: "2024-10-21"
+
+# -- Workload Identity
+serviceAccount:
+  annotations: {}
+
+# -- Network policy
+networkPolicy:
+  enabled: true
+  egressAllowCIDRs: []
+  egressAllowDomains:
+    - "api.openai.com"
+    - "api.anthropic.com"
+    - "api.telegram.org"
+    - "discord.com"
+    - "gateway.discord.gg"
+    - "slack.com"
+    - "*.openai.azure.com"
+
+# -- Gateway API (Application Gateway for Containers) §7
+gateway:
+  enabled: true
+  name: "agent-warden-gateway"           # Name of the shared Gateway resource
+  namespace: "agent-warden-system"       # Namespace where the Gateway lives
+  hostname: "gw.example.com"         # Override per-environment
+
+# -- Graceful shutdown
+terminationGracePeriodSeconds: 30
+
+# -- Git-sync sidecar for workspace memory versioning (§4.5.9)
+gitSync:
+  enabled: false
+  repo: ""
+  period: "300s"
+
+# -- Memory index rebuild init container (§4.5.8)
+memoryIndexRebuild:
+  enabled: true
+
+# -- Ephemeral volume size limit
+ephemeralSizeLimit: "2Gi"
+
+# -- LiteLLM Proxy sidecar (Azure OpenAI adapter)
+# Translates OpenAI-compatible requests to Azure OpenAI format.
+# Handles MI auth via workload identity and drops unsupported params.
+litellmProxy:
+  enabled: true
+  port: 4000
+  masterKey: "CHANGE-ME"          # Override per-tenant; never commit real keys
+  logLevel: "WARNING"
+  image:
+    repository: litellm/litellm
+    tag: "v1.82.0-stable"
+    pullPolicy: IfNotPresent
+
+# -- Purview DLP Plugin (OpenClaw plugin for DLP via Microsoft Purview Graph API)
+# Purview is in E5 tenant "ecardpoc4ecv" (2cf24558-0d31-439b-9c8d-6fdce3931ae7)
+purviewDlpPlugin:
+  enabled: true
+  mode: "enforce"           # "enforce" (block/redact) or "audit" (log only)
+  layers:
+    promptGuard: true       # L1: inject DLP policy into agent context
+    outputScanner: true     # L2: scan tool output via Purview processContent
+    inputAudit: true        # L3: audit inbound user messages via Purview
+  purviewEnabled: true      # Enable Purview Graph API (requires Content.Process.All + M365 E5 license)
+  purviewUserId: ""         # Entra user ID for app-only auth (managed identity)
+  purviewTenantId: ""       # E5 tenant ID: 2cf24558-0d31-439b-9c8d-6fdce3931ae7
+  image:
+    repository: ghcr.io/agent-warden/purview-dlp-plugin
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+# -- SaaS Auth Proxy sidecar (§18.7 Delegated Identity)
+# Intercepts outbound SaaS API calls, injects OAuth tokens, enforces path policies.
+# Pi Agent calls http://localhost:9090/{provider}/{api-path}
+saasProxy:
+  enabled: true
+  port: 9090
+  logLevel: "info"
+  googleClientId: ""     # Entra App Registration or Google OAuth client ID
+  graphClientId: ""      # Entra App Registration client ID for Microsoft Graph
+  image:
+    repository: ghcr.io/agent-warden/saas-auth-proxy
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  # Path-level allow/deny policies per SaaS provider
+  policies:
+    google:
+      allow: []                                # Empty = allow all
+      deny:
+        - "/gmail/v1/users/me/messages/send"   # Block sending email by default
+    graph:
+      allow: []
+      deny:
+        - "/v1.0/me/sendMail"                  # Block sending email by default
+    sfdc:
+      allow: []
+      deny: []
+    slack:
+      allow: []
+      deny: []
+    github:
+      allow: []
+      deny: []
+
+# -- Kata sandbox for tool execution (§4.1.1)
+# Pods run inside Hyper-V microVMs on Azure Linux nodes.
+# Defender eBPF has no visibility inside the microVM — see design doc for compensating controls.
+sandbox:
+  enabled: true
+  timeoutSeconds: 120      # Hard kill after this duration
+  scratchSizeLimit: "256Mi"
+  image:
+    repository: ghcr.io/openclaw/openclaw-sandbox
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "512Mi"

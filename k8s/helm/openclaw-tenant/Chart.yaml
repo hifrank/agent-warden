@@ -1,0 +1,6 @@
+apiVersion: v2
+name: openclaw-tenant
+description: Helm chart for deploying an isolated OpenClaw tenant instance
+version: 0.1.0
+appVersion: "0.9.28"
+type: application

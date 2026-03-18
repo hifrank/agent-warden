@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-warden-operator
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: agent-warden-operator
+    app.kubernetes.io/part-of: agent-warden
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-warden-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agent-warden-operator
+        app.kubernetes.io/part-of: agent-warden
+    spec:
+      serviceAccountName: agent-warden-operator
+      nodeSelector:
+        openclaw.io/pool: system
+      containers:
+        - name: operator
+          image: acragentwardendev.azurecr.io/agent-warden-operator:latest
+          env:
+            - name: HELM_CHART_PATH
+              value: "/app/charts/openclaw-tenant"
+            - name: ACR_LOGIN_SERVER
+              value: "acragentwardendev.azurecr.io"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

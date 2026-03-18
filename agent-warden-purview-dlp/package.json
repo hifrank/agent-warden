@@ -1,0 +1,12 @@
+{
+  "name": "agent-warden-purview-dlp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./src/index.ts"]
+  },
+  "dependencies": {
+    "@azure/identity": "^4.6.0"
+  }
+}

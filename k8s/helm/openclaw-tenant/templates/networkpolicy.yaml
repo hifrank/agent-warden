@@ -1,0 +1,71 @@
+# Default deny-all + selective egress per tenant (§4.2)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-agc
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openclaw
+      app.kubernetes.io/instance: {{ .Values.tenantId }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # AGC (Application Gateway for Containers) data-plane VMSS workers send
+    # health probes and traffic directly from the AGC subnet to pod IPs.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        {{- if .Values.agcSubnetCidr }}
+        - ipBlock:
+            cidr: {{ .Values.agcSubnetCidr }}
+        {{- end }}
+      ports:
+        - port: 18789
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns-and-apis
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openclaw
+      app.kubernetes.io/instance: {{ .Values.tenantId }}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to: []
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # HTTPS to external APIs (LLM providers, channel APIs)
+    - to: []
+      ports:
+        - port: 443
+          protocol: TCP

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw-{{ .Values.tenantId }}
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/instance: {{ .Values.tenantId }}
+  ports:
+    - name: gateway
+      port: 18789
+      targetPort: gateway
+      protocol: TCP

@@ -1,0 +1,38 @@
+{{- $storageConfig := include "openclaw-tenant.storageConfig" . | fromYaml }}
+# Per-tenant resource quota (§4.5.5, §8)
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-quota
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+spec:
+  hard:
+    requests.cpu: {{ if eq .Values.tier "enterprise" }}"6"{{ else if eq .Values.tier "pro" }}"3"{{ else }}"1.5"{{ end }}
+    requests.memory: {{ if eq .Values.tier "enterprise" }}"12Gi"{{ else if eq .Values.tier "pro" }}"6Gi"{{ else }}"3Gi"{{ end }}
+    limits.cpu: {{ if eq .Values.tier "enterprise" }}"8"{{ else if eq .Values.tier "pro" }}"4"{{ else }}"2"{{ end }}
+    limits.memory: {{ if eq .Values.tier "enterprise" }}"16Gi"{{ else if eq .Values.tier "pro" }}"8Gi"{{ else }}"4Gi"{{ end }}
+    requests.storage: {{ if eq .Values.tier "enterprise" }}"500Gi"{{ else if eq .Values.tier "pro" }}"50Gi"{{ else }}"5Gi"{{ end }}
+    persistentvolumeclaims: "3"
+    pods: {{ if eq .Values.tier "enterprise" }}"10"{{ else if eq .Values.tier "pro" }}"5"{{ else }}"3"{{ end }}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: tenant-limits
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "1Gi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "256Mi"
+      max:
+        cpu: {{ if eq .Values.tier "enterprise" }}"4"{{ else if eq .Values.tier "pro" }}"2"{{ else }}"1"{{ end }}
+        memory: {{ if eq .Values.tier "enterprise" }}"8Gi"{{ else if eq .Values.tier "pro" }}"4Gi"{{ else }}"2Gi"{{ end }}

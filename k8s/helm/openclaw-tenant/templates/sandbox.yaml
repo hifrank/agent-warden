@@ -1,0 +1,79 @@
+{{- if .Values.sandbox.enabled }}
+# Sandbox Pod Template — used by OpenClaw Gateway to spawn tool execution pods (§4.1.1)
+# Runs on Kata Containers (Hyper-V microVM) for VM-level isolation.
+# No PVCs, no secrets — ephemeral scratch space only.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sandbox-pod-template-{{ .Values.tenantId }}
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+    openclaw.io/component: sandbox-template
+data:
+  pod-template.yaml: |
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      generateName: sandbox-{{ .Values.tenantId }}-
+      namespace: tenant-{{ .Values.tenantId }}
+      labels:
+        app.kubernetes.io/name: openclaw-sandbox
+        app.kubernetes.io/instance: {{ .Values.tenantId }}
+        openclaw.io/component: sandbox
+        openclaw.io/tenant: {{ .Values.tenantId }}
+    spec:
+      runtimeClassName: kata-mshv-vm-isolation
+      restartPolicy: Never
+      activeDeadlineSeconds: {{ .Values.sandbox.timeoutSeconds }}
+      serviceAccountName: openclaw-{{ .Values.tenantId }}-sandbox
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sandbox
+          image: {{ .Values.sandbox.image.repository }}:{{ .Values.sandbox.image.tag }}
+          imagePullPolicy: {{ .Values.sandbox.image.pullPolicy }}
+          resources:
+            requests:
+              cpu: {{ .Values.sandbox.resources.requests.cpu | quote }}
+              memory: {{ .Values.sandbox.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.sandbox.resources.limits.cpu | quote }}
+              memory: {{ .Values.sandbox.resources.limits.memory | quote }}
+              ephemeral-storage: "1Gi"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: scratch
+              mountPath: /tmp
+            - name: scratch-var
+              mountPath: /var/tmp
+      volumes:
+        - name: scratch
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.sandbox.scratchSizeLimit | quote }}
+        - name: scratch-var
+          emptyDir:
+            medium: Memory
+            sizeLimit: "64Mi"
+---
+# Minimal ServiceAccount for sandbox pods — no Key Vault access, no RBAC bindings
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openclaw-{{ .Values.tenantId }}-sandbox
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+    openclaw.io/component: sandbox
+automountServiceAccountToken: false
+{{- end }}

@@ -1,0 +1,47 @@
+# Health Check CronJob — runs every 60s against all tenant instances (§21.3)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: health-check-controller
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: health-check-controller
+    app.kubernetes.io/part-of: agent-warden
+spec:
+  schedule: "* * * * *"  # Every minute
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 55  # Must finish before next schedule
+      template:
+        spec:
+          serviceAccountName: agent-agent-warden-operator
+          restartPolicy: Never
+          nodeSelector:
+            openclaw.io/pool: system
+          containers:
+            - name: health-checker
+              image: ghcr.io/agent-warden/health-checker:latest
+              env:
+                - name: COSMOS_ENDPOINT
+                  valueFrom:
+                    secretKeyRef:
+                      name: agent-warden-config
+                      key: cosmos-endpoint
+                - name: COSMOS_DATABASE
+                  value: "agent-warden"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              securityContext:
+                runAsNonRoot: true
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]

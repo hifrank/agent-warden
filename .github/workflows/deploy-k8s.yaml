@@ -1,0 +1,101 @@
+name: 'Deploy Kubernetes Resources'
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'k8s/base/**'
+      - 'k8s/helm/**'
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to deploy'
+        required: true
+        type: choice
+        options:
+          - base-all
+          - storage-classes
+          - rbac
+          - crd
+          - helm-chart
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-base:
+    name: 'Deploy K8s Base Resources'
+    runs-on: ubuntu-latest
+    environment: dev
+    if: >-
+      github.event_name == 'push' ||
+      contains(fromJSON('["base-all","storage-classes","rbac","crd"]'), github.event.inputs.component)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up kubeconfig
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Apply StorageClasses
+        if: >-
+          github.event_name == 'push' ||
+          contains(fromJSON('["base-all","storage-classes"]'), github.event.inputs.component)
+        run: kubectl apply -f k8s/base/storage/
+
+      - name: Apply CRDs
+        if: >-
+          github.event_name == 'push' ||
+          contains(fromJSON('["base-all","crd"]'), github.event.inputs.component)
+        run: kubectl apply -f k8s/operator/config/crd/
+
+      - name: Apply RBAC
+        if: >-
+          github.event_name == 'push' ||
+          contains(fromJSON('["base-all","rbac"]'), github.event.inputs.component)
+        run: kubectl apply -f k8s/base/rbac/
+
+      - name: Deploy Health Check CronJob
+        if: github.event_name == 'push' || github.event.inputs.component == 'base-all'
+        run: kubectl apply -f k8s/base/monitoring/
+
+  deploy-operator:
+    name: 'Deploy Operator'
+    needs: deploy-base
+    runs-on: ubuntu-latest
+    environment: dev
+    if: github.event_name == 'push' || github.event.inputs.component == 'base-all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up kubeconfig
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Deploy Operator via Helm
+        run: |
+          helm upgrade --install agent-warden-operator k8s/helm/agent-warden-operator \
+            --namespace agent-warden-system \
+            --create-namespace \
+            --set image.repository=${{ secrets.ACR_NAME }}.azurecr.io/agent-warden-operator \
+            --set image.tag=${{ github.sha }} \
+            --wait --timeout 5m

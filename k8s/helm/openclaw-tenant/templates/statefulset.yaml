@@ -1,0 +1,464 @@
+{{- $storageConfig := include "openclaw-tenant.storageConfig" . | fromYaml }}
+{{- $resourceConfig := include "openclaw-tenant.resourceConfig" . | fromYaml }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openclaw-{{ .Values.tenantId }}
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: openclaw-{{ .Values.tenantId }}
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openclaw
+      app.kubernetes.io/instance: {{ .Values.tenantId }}
+  template:
+    metadata:
+      labels:
+        {{- include "openclaw-tenant.labels" . | nindent 8 }}
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: openclaw-{{ .Values.tenantId }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      nodeSelector:
+        openclaw.io/pool: tenant
+      tolerations:
+        - key: "openclaw.io/tenant-only"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+
+      # ── Init containers ──
+      initContainers:
+        {{- if .Values.purviewDlpPlugin.enabled }}
+        # Copy Purview DLP plugin into shared volume for gateway to load
+        - name: install-purview-dlp-plugin
+          image: {{ .Values.purviewDlpPlugin.image.repository }}:{{ .Values.purviewDlpPlugin.image.tag }}
+          imagePullPolicy: {{ .Values.purviewDlpPlugin.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              TARGET=/data/state/plugins/agent-warden-purview-dlp
+              rm -rf "$TARGET"
+              mkdir -p "$TARGET"
+              cd /plugin && tar cf - . | tar xf - --no-same-owner -C "$TARGET"
+              # Write runtime config (Helm values → plugin config.json)
+              cat > "$TARGET/config.json" <<'CFGEOF'
+              {
+                "mode": {{ .Values.purviewDlpPlugin.mode | quote }},
+                "layers": {
+                  "promptGuard": {{ .Values.purviewDlpPlugin.layers.promptGuard }},
+                  "outputScanner": {{ .Values.purviewDlpPlugin.layers.outputScanner }},
+                  "inputAudit": {{ .Values.purviewDlpPlugin.layers.inputAudit }}
+                },
+                "purview": {
+                  "enabled": {{ .Values.purviewDlpPlugin.purviewEnabled }},
+                  "appName": "Agent Warden",
+                  "appVersion": "0.3.0"
+                  {{- if .Values.purviewDlpPlugin.purviewUserId }},
+                  "userId": {{ .Values.purviewDlpPlugin.purviewUserId | quote }}
+                  {{- end }}
+                  {{- if .Values.purviewDlpPlugin.purviewTenantId }},
+                  "crossTenant": true
+                  {{- end }}
+                }
+              }
+              CFGEOF
+              chown -R 1000:1000 /data/state/plugins
+              chmod -R u=rwX,g=rX,o=rX /data/state/plugins
+              echo "Plugin installed at $TARGET"
+              ls -la "$TARGET"
+          volumeMounts:
+            - name: state-vol
+              mountPath: /data/state
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+        {{- end }}
+        {{- if .Values.memoryIndexRebuild.enabled }}
+        # Memory index rebuild (§4.5.8)
+        - name: memory-index-check
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              INDEX="/data/state/memory/default.sqlite"
+              LATEST_MD=$(find /data/workspace/memory -name '*.md' -newer "$INDEX" 2>/dev/null | head -1)
+              if [ -n "$LATEST_MD" ] || [ ! -f "$INDEX" ]; then
+                echo "Memory index stale or missing — rebuilding..."
+                openclaw memory index --state-dir /data/state --workspace /data/workspace
+              else
+                echo "Memory index is up to date."
+              fi
+          volumeMounts:
+            - name: state-vol
+              mountPath: /data/state
+            - name: work-vol
+              mountPath: /data/workspace
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+        {{- end }}
+
+      containers:
+        # ── Main: OpenClaw Gateway ──
+        - name: openclaw-gateway
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              ln -sfn /opt/agent-browser /home/node/.agent-browser
+              exec openclaw gateway --bind lan --allow-unconfigured
+          env:
+            - name: OPENCLAW_STATE_DIR
+              value: /data/state
+            - name: OPENCLAW_CONFIG_PATH
+              value: /data/state/openclaw.json
+            - name: NODE_ENV
+              value: production
+            - name: PATH
+              value: "/data/state/npm-global/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            - name: AGENT_BROWSER_HOME
+              value: /opt/agent-browser
+            - name: XDG_RUNTIME_DIR
+              value: /tmp
+            {{- if .Values.litellmProxy.enabled }}
+            # LiteLLM proxy handles Azure OpenAI translation + MI auth
+            - name: OPENAI_API_KEY
+              value: {{ .Values.litellmProxy.masterKey | quote }}
+            {{- else if .Values.azureOpenAI.enabled }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-{{ .Values.tenantId }}-secrets
+                  key: AZURE_OPENAI_API_KEY
+            {{- else }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-{{ .Values.tenantId }}-secrets
+                  key: OPENAI_API_KEY
+            {{- end }}
+            {{- if .Values.saasProxy.enabled }}
+            - name: SAAS_PROXY_URL
+              value: "http://127.0.0.1:{{ .Values.saasProxy.port }}"
+            {{- end }}
+            {{- if .Values.purviewDlpPlugin.enabled }}
+            - name: PURVIEW_DLP_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-{{ .Values.tenantId }}-secrets
+                  key: PURVIEW_DLP_CLIENT_ID
+            - name: PURVIEW_DLP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-{{ .Values.tenantId }}-secrets
+                  key: PURVIEW_DLP_CLIENT_SECRET
+            {{- if .Values.purviewDlpPlugin.purviewTenantId }}
+            - name: PURVIEW_DLP_TENANT_ID
+              value: {{ .Values.purviewDlpPlugin.purviewTenantId | quote }}
+            {{- end }}
+            {{- end }}
+          volumeMounts:
+            - name: state-vol
+              mountPath: /data/state
+            - name: work-vol
+              mountPath: /data/workspace
+            - name: secrets
+              mountPath: /mnt/secrets
+              readOnly: true
+            - name: ephemeral
+              mountPath: /tmp
+            - name: ephemeral-var
+              mountPath: /var/tmp
+            - name: openclaw-home
+              mountPath: /home/node/.openclaw
+            {{- if .Values.purviewDlpPlugin.enabled }}
+            {{- /* Plugin files are in /data/state/plugins/ via init container */}}
+            {{- end }}
+          ports:
+            - name: gateway
+              containerPort: 18789
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command: ["wget", "-q", "--spider", "http://127.0.0.1:18789/health"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["wget", "-q", "--spider", "http://127.0.0.1:18789/health"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+          resources:
+            {{- toYaml $resourceConfig | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: Unconfined
+            capabilities:
+              drop: ["ALL"]
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - "kill -SIGTERM 1 && sleep 25"
+
+        # ── LiteLLM Proxy sidecar — Azure OpenAI adapter ──
+        {{- if .Values.litellmProxy.enabled }}
+        - name: litellm-proxy
+          image: {{ .Values.litellmProxy.image.repository }}:{{ .Values.litellmProxy.image.tag }}
+          imagePullPolicy: {{ .Values.litellmProxy.image.pullPolicy }}
+          args:
+            - --config
+            - /etc/litellm/config.yaml
+            - --port
+            - "{{ .Values.litellmProxy.port }}"
+            - --num_workers
+            - "1"
+          env:
+            - name: LITELLM_MASTER_KEY
+              value: {{ .Values.litellmProxy.masterKey | quote }}
+            - name: LITELLM_LOG
+              value: {{ .Values.litellmProxy.logLevel | quote }}
+            - name: PYTHONPATH
+              value: /etc/litellm
+            - name: TENANT_ID
+              value: {{ .Values.tenantId | quote }}
+            {{- if .Values.cosmos }}
+            - name: COSMOS_ENDPOINT
+              value: {{ .Values.cosmos.endpoint | quote }}
+            - name: COSMOS_DATABASE
+              value: {{ .Values.cosmos.database | default "agent-warden" | quote }}
+            {{- end }}
+          ports:
+            - name: litellm
+              containerPort: {{ .Values.litellmProxy.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: litellm
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: litellm
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: litellm-config
+              mountPath: /etc/litellm
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+        {{- end }}
+
+        # ── SaaS Auth Proxy sidecar (§18.7 Delegated Identity) ──
+        {{- if .Values.saasProxy.enabled }}
+        - name: saas-auth-proxy
+          image: {{ .Values.saasProxy.image.repository }}:{{ .Values.saasProxy.image.tag }}
+          imagePullPolicy: {{ .Values.saasProxy.image.pullPolicy }}
+          env:
+            - name: SAAS_PROXY_PORT
+              value: "{{ .Values.saasProxy.port }}"
+            - name: TENANT_ID
+              value: {{ .Values.tenantId | quote }}
+            - name: SECRETS_DIR
+              value: /mnt/secrets
+            - name: LOG_LEVEL
+              value: {{ .Values.saasProxy.logLevel | quote }}
+            - name: SAAS_POLICY_PATH
+              value: /etc/saas-proxy/policy.json
+            {{- if .Values.cosmos }}
+            - name: COSMOS_ENDPOINT
+              value: {{ .Values.cosmos.endpoint | quote }}
+            - name: COSMOS_DATABASE
+              value: {{ .Values.cosmos.database | default "agent-warden" | quote }}
+            {{- end }}
+            {{- if .Values.saasProxy.googleClientId }}
+            - name: GOOGLE_CLIENT_ID
+              value: {{ .Values.saasProxy.googleClientId | quote }}
+            {{- end }}
+            {{- if .Values.saasProxy.graphClientId }}
+            - name: GRAPH_CLIENT_ID
+              value: {{ .Values.saasProxy.graphClientId | quote }}
+            {{- end }}
+          ports:
+            - name: saas-proxy
+              containerPort: {{ .Values.saasProxy.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: saas-proxy
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: saas-proxy
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          volumeMounts:
+            - name: secrets
+              mountPath: /mnt/secrets
+              readOnly: true
+            - name: saas-policy
+              mountPath: /etc/saas-proxy
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+        {{- end }}
+
+        # ── Optional: git-sync sidecar for workspace memory (§4.5.9) ──
+        {{- if .Values.gitSync.enabled }}
+        - name: workspace-git-sync
+          image: registry.k8s.io/git-sync/git-sync:v4
+          args:
+            - --repo={{ .Values.gitSync.repo }}
+            - --root=/data/workspace
+            - --period={{ .Values.gitSync.period }}
+            - --one-time=false
+            - --ssh=false
+            - --credential=managed-identity
+          volumeMounts:
+            - name: work-vol
+              mountPath: /data/workspace
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+        {{- end }}
+
+      volumes:
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: openclaw-{{ .Values.tenantId }}
+        - name: ephemeral
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.ephemeralSizeLimit }}
+        - name: ephemeral-var
+          emptyDir:
+            medium: Memory
+            sizeLimit: "512Mi"
+        - name: openclaw-home
+          emptyDir:
+            sizeLimit: "64Mi"
+
+        {{- if .Values.litellmProxy.enabled }}
+        - name: litellm-config
+          projected:
+            sources:
+              - configMap:
+                  name: litellm-config-{{ .Values.tenantId }}
+              - configMap:
+                  name: litellm-callback-{{ .Values.tenantId }}
+        {{- end }}
+        {{- if .Values.saasProxy.enabled }}
+        - name: saas-policy
+          configMap:
+            name: saas-proxy-policy-{{ .Values.tenantId }}
+            optional: true
+        {{- end }}
+
+  volumeClaimTemplates:
+    - metadata:
+        name: state-vol
+        labels:
+          {{- include "openclaw-tenant.labels" . | nindent 10 }}
+          openclaw.io/volume-type: state
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ $storageConfig.storageClass }}
+        resources:
+          requests:
+            storage: {{ $storageConfig.stateSize }}
+    - metadata:
+        name: work-vol
+        labels:
+          {{- include "openclaw-tenant.labels" . | nindent 10 }}
+          openclaw.io/volume-type: workspace
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ $storageConfig.storageClass }}
+        resources:
+          requests:
+            storage: {{ $storageConfig.workspaceSize }}

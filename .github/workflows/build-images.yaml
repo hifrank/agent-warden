@@ -1,0 +1,195 @@
+name: 'Build & Push Images'
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent-warden-server/**'
+      - 'k8s/operator/**'
+      - 'k8s/base/monitoring/**'
+      - 'sandbox-monitor/**'
+      - 'agent-warden-saas-proxy/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'agent-warden-server/**'
+      - 'k8s/operator/**'
+      - 'k8s/base/monitoring/**'
+      - 'sandbox-monitor/**'
+      - 'agent-warden-saas-proxy/**'
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      mcp-server: ${{ steps.filter.outputs.mcp-server }}
+      operator: ${{ steps.filter.outputs.operator }}
+      health-checker: ${{ steps.filter.outputs.health-checker }}
+      sandbox-monitor: ${{ steps.filter.outputs.sandbox-monitor }}
+      saas-proxy: ${{ steps.filter.outputs.saas-proxy }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            mcp-server:
+              - 'agent-warden-server/**'
+            operator:
+              - 'k8s/operator/**'
+            health-checker:
+              - 'k8s/base/monitoring/**'
+            sandbox-monitor:
+              - 'sandbox-monitor/**'
+            saas-proxy:
+              - 'agent-warden-saas-proxy/**'
+
+  build-mcp-server:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.mcp-server == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: agent-warden-server
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ secrets.ACR_NAME }}.azurecr.io/agent-warden-server:${{ github.sha }}
+            ${{ secrets.ACR_NAME }}.azurecr.io/agent-warden-server:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-operator:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.operator == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: k8s/operator
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ secrets.ACR_NAME }}.azurecr.io/agent-warden-operator:${{ github.sha }}
+            ${{ secrets.ACR_NAME }}.azurecr.io/agent-warden-operator:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-health-checker:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.health-checker == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: k8s/base/monitoring
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ secrets.ACR_NAME }}.azurecr.io/health-checker:${{ github.sha }}
+            ${{ secrets.ACR_NAME }}.azurecr.io/health-checker:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-sandbox-monitor:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.sandbox-monitor == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: sandbox-monitor
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ secrets.ACR_NAME }}.azurecr.io/sandbox-monitor:${{ github.sha }}
+            ${{ secrets.ACR_NAME }}.azurecr.io/sandbox-monitor:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-saas-proxy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.saas-proxy == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: agent-warden-saas-proxy
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ secrets.ACR_NAME }}.azurecr.io/agent-warden-saas-proxy:${{ github.sha }}
+            ${{ secrets.ACR_NAME }}.azurecr.io/agent-warden-saas-proxy:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
