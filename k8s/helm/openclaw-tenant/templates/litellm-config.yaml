@@ -16,6 +16,8 @@ data:
           api_base: {{ .Values.azureOpenAI.endpoint | trimSuffix "/" }}
           api_version: {{ .Values.azureOpenAI.apiVersion | quote }}
           base_model: {{ .Values.azureOpenAI.baseModel | default "gpt-4o" | quote }}
+          stream_options:
+            include_usage: true
       {{- end }}
 
     litellm_settings:

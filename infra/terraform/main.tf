@@ -101,6 +101,17 @@ module "appgw" {
   tags                       = local.common_tags
 }
 
+# ─── Application Insights ──────────────────────────────────
+module "appinsights" {
+  source = "./modules/appinsights"
+
+  name                       = "appi-${local.suffix}"
+  location                   = var.location
+  resource_group_name        = data.azurerm_resource_group.main.name
+  log_analytics_workspace_id = module.log_analytics.workspace_id
+  tags                       = local.common_tags
+}
+
 # ─── Platform Managed Identity ─────────────────────────────
 module "platform_identity" {
   source = "./modules/managed-identity"

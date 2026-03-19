@@ -1,0 +1,39 @@
+{
+  "id": "agent-warden-agents-view",
+  "name": "Agent Warden Agents View",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin that emits OTel GenAI Semantic Convention spans for Azure Monitor Agents View.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "otelEndpoint": {
+        "type": "string",
+        "default": "grpc://otel-collector.agent-warden-system.svc.cluster.local:4317",
+        "description": "OTel Collector gRPC endpoint for trace export"
+      },
+      "sampleRate": {
+        "type": "number",
+        "default": 1.0,
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Trace sampling rate (0.0–1.0)"
+      },
+      "enableContentCapture": {
+        "type": "boolean",
+        "default": false,
+        "description": "Capture prompt/completion content in spans (PII-sensitive, off by default)"
+      },
+      "serviceName": {
+        "type": "string",
+        "default": "openclaw-gateway",
+        "description": "OTel service name for resource attributes"
+      },
+      "tenantId": {
+        "type": "string",
+        "default": "",
+        "description": "Tenant ID for multi-tenant filtering in App Insights"
+      }
+    }
+  }
+}

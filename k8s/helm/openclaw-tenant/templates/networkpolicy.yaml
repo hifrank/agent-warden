@@ -69,3 +69,13 @@ spec:
       ports:
         - port: 443
           protocol: TCP
+    # OTel Collector (traces, metrics) in agent-warden-system namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-warden-system
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP

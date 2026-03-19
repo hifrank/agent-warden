@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-warden-server
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: agent-warden-server
+    app.kubernetes.io/part-of: agent-warden
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-warden-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agent-warden-server
+        app.kubernetes.io/part-of: agent-warden
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: agent-warden-server
+      nodeSelector:
+        openclaw.io/pool: system
+      containers:
+        - name: server
+          image: acragentwardendev.azurecr.io/agent-warden-server:latest
+          env:
+            - name: MCP_TRANSPORT
+              value: "http"
+            - name: MCP_SERVER_PORT
+              value: "3000"
+            - name: AZURE_COSMOS_ENDPOINT
+              value: "https://cosmos-agentwarden-dev.documents.azure.com:443/"
+            - name: AZURE_COSMOS_DATABASE
+              value: "agent-warden"
+            - name: AZURE_KEYVAULT_URL
+              value: "https://kv-plat-agentwarden-dev.vault.azure.net/"
+            - name: AZURE_PURVIEW_ENDPOINT
+              value: "https://ecardpoc4ecv.purview.azure.com"
+            - name: AZURE_PURVIEW_GOVERNANCE_ENDPOINT
+              value: "https://ecardpoc4ecv.purview.azure.com"
+            - name: PURVIEW_ROOT_COLLECTION
+              value: "agent-warden-platform"
+            - name: AKS_CLUSTER_NAME
+              value: "aks-agentwarden-dev"
+            - name: AKS_RESOURCE_GROUP
+              value: "rg-agentwarden-dev"
+            - name: ACR_LOGIN_SERVER
+              value: "acragentwardendev.azurecr.io"
+            - name: HELM_CHART_PATH
+              value: "/app/charts/openclaw-tenant"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.agent-warden-system.svc.cluster.local:4318"
+            - name: OTEL_SERVICE_NAME
+              value: "agent-warden-server"
+            - name: PURVIEW_DLP_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-server-secrets
+                  key: PURVIEW_DLP_TENANT_ID
+                  optional: true
+            - name: PURVIEW_DLP_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-server-secrets
+                  key: PURVIEW_DLP_CLIENT_ID
+                  optional: true
+            - name: PURVIEW_DLP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-server-secrets
+                  key: PURVIEW_DLP_CLIENT_SECRET
+                  optional: true
+          ports:
+            - name: mcp
+              containerPort: 3000
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: mcp
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            tcpSocket:
+              port: mcp
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-warden-server
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: agent-warden-server
+    app.kubernetes.io/part-of: agent-warden
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: agent-warden-server
+  ports:
+    - name: mcp
+      port: 3000
+      targetPort: mcp
+      protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-warden-server
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: agent-warden-server
+    app.kubernetes.io/part-of: agent-warden
+  annotations:
+    azure.workload.identity/client-id: "dea0aebd-5099-4ebb-a3ce-a67f2823e40d"

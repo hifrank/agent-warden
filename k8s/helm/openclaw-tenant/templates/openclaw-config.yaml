@@ -1,0 +1,153 @@
+{{- /*
+  openclaw.json ConfigMap — seeds the OpenClaw gateway configuration.
+  An init-container copies this to /data/state/openclaw.json if absent,
+  preserving any runtime changes already on the PVC.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-{{ .Values.tenantId }}-config
+  namespace: tenant-{{ .Values.tenantId }}
+  labels:
+    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+data:
+  openclaw.json: |
+    {
+      "models": {
+        "mode": "merge",
+        "providers": {
+          {{- if .Values.litellmProxy.enabled }}
+          "litellm": {
+            "baseUrl": "http://localhost:{{ .Values.litellmProxy.port }}/v1",
+            "apiKey": "LITELLM_MASTER_KEY_PLACEHOLDER",
+            "api": "openai-completions",
+            "models": [
+              {
+                "id": {{ .Values.azureOpenAI.baseModel | default "gpt-4o" | quote }},
+                "name": "{{ .Values.azureOpenAI.baseModel | default "gpt-4o" }} (Azure)",
+                "reasoning": false,
+                "input": ["text", "image"],
+                "contextWindow": 128000,
+                "maxTokens": 16384
+              }
+            ]
+          }
+          {{- else }}
+          "openai": {
+            "api": "openai-completions",
+            "models": [
+              {
+                "id": "gpt-4o",
+                "name": "GPT-4o",
+                "reasoning": false,
+                "input": ["text", "image"],
+                "contextWindow": 128000,
+                "maxTokens": 16384
+              }
+            ]
+          }
+          {{- end }}
+        }
+      },
+      "agents": {
+        "defaults": {
+          {{- if .Values.litellmProxy.enabled }}
+          "model": "litellm/{{ .Values.azureOpenAI.baseModel | default "gpt-4o" }}",
+          {{- else }}
+          "model": "openai/gpt-4o",
+          {{- end }}
+          "compaction": {
+            "mode": "safeguard"
+          },
+          "timeoutSeconds": 120
+        }
+      },
+      "commands": {
+        "native": "auto",
+        "nativeSkills": "auto",
+        "restart": true,
+        "ownerDisplay": "raw"
+      },
+      "gateway": {
+        "controlUi": {
+          "dangerouslyAllowHostHeaderOriginFallback": true,
+          "dangerouslyDisableDeviceAuth": true
+        },
+        "auth": {
+          "mode": "token",
+          "token": "GATEWAY_TOKEN_PLACEHOLDER"
+        }
+      },
+      {{- if or .Values.purviewDlpPlugin.enabled .Values.agentsViewPlugin.enabled }}
+      "plugins": {
+        "allow": [
+          {{- $allowList := list }}
+          {{- if .Values.purviewDlpPlugin.enabled }}{{ $allowList = append $allowList "agent-warden-purview-dlp" }}{{ end }}
+          {{- if .Values.agentsViewPlugin.enabled }}{{ $allowList = append $allowList "agent-warden-agents-view" }}{{ end }}
+          {{- if .Values.diagnosticsOtel.enabled }}{{ $allowList = append $allowList "diagnostics-otel" }}{{ end }}
+          {{- range $i, $v := $allowList }}{{ if $i }},{{ end }}
+          {{ $v | quote }}{{- end }}
+        ],
+        "load": {
+          "paths": [
+            {{- $pathList := list }}
+            {{- if .Values.purviewDlpPlugin.enabled }}{{ $pathList = append $pathList "/data/state/plugins/agent-warden-purview-dlp" }}{{ end }}
+            {{- if .Values.agentsViewPlugin.enabled }}{{ $pathList = append $pathList "/data/state/plugins/agent-warden-agents-view" }}{{ end }}
+            {{- range $i, $v := $pathList }}{{ if $i }},{{ end }}
+            {{ $v | quote }}{{- end }}
+          ]
+        },
+        "entries": {
+          {{- $entryCount := 0 }}
+          {{- if .Values.purviewDlpPlugin.enabled }}{{ if $entryCount }},{{ end }}
+          "agent-warden-purview-dlp": { "enabled": true }{{ $entryCount = 1 }}{{ end }}
+          {{- if .Values.agentsViewPlugin.enabled }}{{ if $entryCount }},{{ end }}
+          "agent-warden-agents-view": { "enabled": true }{{ $entryCount = 1 }}{{ end }}
+          {{- if .Values.diagnosticsOtel.enabled }}{{ if $entryCount }},{{ end }}
+          "diagnostics-otel": { "enabled": true }{{ end }}
+        },
+        "installs": {
+          {{- $installCount := 0 }}
+          {{- if .Values.purviewDlpPlugin.enabled }}{{ if $installCount }},{{ end }}
+          "agent-warden-purview-dlp": {
+            "source": "path",
+            "sourcePath": "/data/state/plugins/agent-warden-purview-dlp",
+            "installPath": "/data/state/plugins/agent-warden-purview-dlp",
+            "version": "0.3.0",
+            "installedAt": "{{ now | date "2006-01-02T15:04:05Z" }}"
+          }{{ $installCount = 1 }}{{ end }}
+          {{- if .Values.agentsViewPlugin.enabled }}{{ if $installCount }},{{ end }}
+          "agent-warden-agents-view": {
+            "source": "path",
+            "sourcePath": "/data/state/plugins/agent-warden-agents-view",
+            "installPath": "/data/state/plugins/agent-warden-agents-view",
+            "version": "0.1.0",
+            "installedAt": "{{ now | date "2006-01-02T15:04:05Z" }}"
+          }{{ end }}
+        }
+      },
+      {{- else }}
+      "plugins": {
+        {{- if .Values.diagnosticsOtel.enabled }}
+        "allow": ["diagnostics-otel"],
+        "entries": {
+          "diagnostics-otel": { "enabled": true }
+        }
+        {{- end }}
+      },
+      {{- end }}
+      "diagnostics": {
+        "enabled": {{ .Values.diagnosticsOtel.enabled }},
+        "otel": {
+          "enabled": {{ .Values.diagnosticsOtel.enabled }},
+          "endpoint": {{ .Values.diagnosticsOtel.endpoint | quote }},
+          "protocol": "http/protobuf",
+          "serviceName": "openclaw-gateway",
+          "traces": true,
+          "metrics": true,
+          "logs": {{ .Values.diagnosticsOtel.logs }},
+          "sampleRate": {{ .Values.diagnosticsOtel.sampleRate }},
+          "flushIntervalMs": {{ .Values.diagnosticsOtel.flushIntervalMs }}
+        }
+      }
+    }

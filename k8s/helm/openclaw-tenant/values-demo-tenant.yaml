@@ -17,8 +17,8 @@ cosmos:
 azureOpenAI:
   enabled: true
   endpoint: "https://aoai-agentwarden-dev.openai.azure.com/"
-  deploymentName: "gpt-4o"
-  baseModel: "gpt-4o"    # actual Azure model behind the deployment
+  deploymentName: "gpt-54"
+  baseModel: "gpt-5.4"    # actual Azure model behind the deployment
   apiVersion: "2024-10-21"
 
 memoryIndexRebuild:

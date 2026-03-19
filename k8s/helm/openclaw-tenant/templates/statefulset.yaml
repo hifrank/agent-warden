@@ -40,6 +40,54 @@ spec:
 
       # ── Init containers ──
       initContainers:
+        # Seed openclaw.json from ConfigMap if not already present on PVC.
+        # Replaces placeholders with actual secret values.
+        # Preserves any in-place runtime config changes on subsequent restarts.
+        - name: seed-openclaw-config
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              TARGET="/data/state/openclaw.json"
+              if [ -f "$TARGET" ]; then
+                echo "openclaw.json already exists — skipping seed"
+              else
+                echo "Seeding openclaw.json from ConfigMap..."
+                cp /config-seed/openclaw.json "$TARGET"
+                # Replace placeholder tokens with real secrets
+                sed -i "s|LITELLM_MASTER_KEY_PLACEHOLDER|${LITELLM_MASTER_KEY}|g" "$TARGET"
+                sed -i "s|GATEWAY_TOKEN_PLACEHOLDER|${GATEWAY_TOKEN}|g" "$TARGET"
+                chown 1000:1000 "$TARGET"
+                echo "openclaw.json seeded successfully"
+              fi
+          env:
+            {{- if .Values.litellmProxy.enabled }}
+            - name: LITELLM_MASTER_KEY
+              value: {{ .Values.litellmProxy.masterKey | quote }}
+            {{- end }}
+            - name: GATEWAY_TOKEN
+              value: {{ .Values.gateway.token | quote }}
+          volumeMounts:
+            - name: state-vol
+              mountPath: /data/state
+            - name: openclaw-config-seed
+              mountPath: /config-seed
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER"]
         {{- if .Values.purviewDlpPlugin.enabled }}
         # Copy Purview DLP plugin into shared volume for gateway to load
         - name: install-purview-dlp-plugin
@@ -74,6 +122,51 @@ spec:
                   "crossTenant": true
                   {{- end }}
                 }
+              }
+              CFGEOF
+              chown -R 1000:1000 /data/state/plugins
+              chmod -R u=rwX,g=rX,o=rX /data/state/plugins
+              echo "Plugin installed at $TARGET"
+              ls -la "$TARGET"
+          volumeMounts:
+            - name: state-vol
+              mountPath: /data/state
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+        {{- end }}
+        {{- if .Values.agentsViewPlugin.enabled }}
+        # Copy Agents View plugin into shared volume for gateway to load
+        - name: install-agents-view-plugin
+          image: {{ .Values.agentsViewPlugin.image.repository }}:{{ .Values.agentsViewPlugin.image.tag }}
+          imagePullPolicy: {{ .Values.agentsViewPlugin.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              TARGET=/data/state/plugins/agent-warden-agents-view
+              rm -rf "$TARGET"
+              mkdir -p "$TARGET"
+              cd /plugin && tar cf - . | tar xf - --no-same-owner -C "$TARGET"
+              # Write runtime config (Helm values → plugin config.json)
+              cat > "$TARGET/config.json" <<'CFGEOF'
+              {
+                "otelEndpoint": "{{ .Values.agentsViewPlugin.otelEndpoint }}",
+                "sampleRate": {{ .Values.agentsViewPlugin.sampleRate }},
+                "enableContentCapture": {{ .Values.agentsViewPlugin.enableContentCapture }},
+                "serviceName": {{ .Values.agentsViewPlugin.serviceName | quote }},
+                "tenantId": {{ .Values.tenantId | quote }}
               }
               CFGEOF
               chown -R 1000:1000 /data/state/plugins
@@ -405,6 +498,9 @@ spec:
         {{- end }}
 
       volumes:
+        - name: openclaw-config-seed
+          configMap:
+            name: openclaw-{{ .Values.tenantId }}-config
         - name: secrets
           csi:
             driver: secrets-store.csi.k8s.io

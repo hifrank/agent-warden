@@ -89,6 +89,7 @@ gateway:
   name: "agent-warden-gateway"           # Name of the shared Gateway resource
   namespace: "agent-warden-system"       # Namespace where the Gateway lives
   hostname: "gw.example.com"         # Override per-environment
+  token: ""                          # Override per-tenant; never commit real tokens
 
 # -- Graceful shutdown
 terminationGracePeriodSeconds: 30
@@ -135,6 +136,28 @@ purviewDlpPlugin:
     repository: ghcr.io/agent-warden/purview-dlp-plugin
     tag: "latest"
     pullPolicy: IfNotPresent
+
+# -- Agents View Plugin (OpenClaw plugin for Azure Monitor Agents View)
+# Emits OTel GenAI Semantic Convention spans for Azure Monitor's Agents View blade.
+agentsViewPlugin:
+  enabled: false
+  otelEndpoint: "http://otel-collector.agent-warden-system.svc.cluster.local:4318/v1/traces"
+  sampleRate: 1.0
+  enableContentCapture: false   # PII-sensitive — captures prompt/completion content in spans
+  serviceName: "openclaw-gateway"
+  image:
+    repository: acragentwardendev.azurecr.io/agents-view-plugin
+    tag: "0.3.0"
+    pullPolicy: IfNotPresent
+
+# -- OpenTelemetry diagnostics (§21 Monitoring)
+# Exports traces, metrics, and logs from OpenClaw gateway to OTel Collector → App Insights.
+diagnosticsOtel:
+  enabled: true
+  endpoint: "http://otel-collector.agent-warden-system.svc.cluster.local:4318"
+  logs: false
+  sampleRate: 1.0
+  flushIntervalMs: 5000
 
 # -- SaaS Auth Proxy sidecar (§18.7 Delegated Identity)
 # Intercepts outbound SaaS API calls, injects OAuth tokens, enforces path policies.

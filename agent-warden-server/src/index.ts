@@ -1,5 +1,7 @@
+import { createServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 import { loadConfig } from "./config/env.js";
 import {
@@ -833,9 +835,41 @@ server.tool(
 // ─── Start Server ─────────────────────────────────────────
 
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error(`Agent Warden Server running (stdio transport)`);
+  const mode = process.env.MCP_TRANSPORT ?? "stdio";
+
+  if (mode === "http") {
+    const port = config.MCP_SERVER_PORT;
+
+    const httpServer = createServer(async (req, res) => {
+      // Stateless mode requires a fresh transport per request
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      transport.onerror = (err) => {
+        console.error("[MCP transport error]", err);
+      };
+      try {
+        await server.connect(transport);
+        await transport.handleRequest(req, res);
+      } catch (err) {
+        console.error("[MCP request error]", err);
+        if (!res.headersSent) {
+          res.writeHead(500, { "Content-Type": "text/plain" });
+          res.end("Internal Server Error");
+        }
+      } finally {
+        await transport.close();
+      }
+    });
+
+    httpServer.listen(port, () => {
+      console.error(`Agent Warden Server running on HTTP port ${port}`);
+    });
+  } else {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error(`Agent Warden Server running (stdio transport)`);
+  }
 }
 
 main().catch((err) => {

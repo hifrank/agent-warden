@@ -38,6 +38,12 @@ output "platform_identity_principal_id" {
   value       = module.platform_identity.principal_id
 }
 
+output "appinsights_connection_string" {
+  description = "Application Insights connection string"
+  value       = module.appinsights.connection_string
+  sensitive   = true
+}
+
 output "purview_catalog_endpoint" {
   description = "Microsoft Purview catalog / Data Map endpoint (E5 tenant ecardpoc4ecv)"
   value       = module.purview.catalog_endpoint
