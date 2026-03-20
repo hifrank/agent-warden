@@ -159,6 +159,10 @@ browserInit:
     repository: acragentwardendev.azurecr.io/browser-init
     tag: "latest"
     pullPolicy: IfNotPresent
+  config:
+    executablePath: "/opt/agent-browser/bin/google-chrome"
+    headless: true
+    noSandbox: true
 
 # -- OpenTelemetry diagnostics (§21 Monitoring)
 # Exports traces, metrics, and logs from OpenClaw gateway to OTel Collector → App Insights.

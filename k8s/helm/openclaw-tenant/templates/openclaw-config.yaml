@@ -136,6 +136,13 @@ data:
         {{- end }}
       },
       {{- end }}
+      {{- if .Values.browserInit.enabled }}
+      "browser": {
+        "executablePath": {{ .Values.browserInit.config.executablePath | quote }},
+        "headless": {{ .Values.browserInit.config.headless }},
+        "noSandbox": {{ .Values.browserInit.config.noSandbox }}
+      },
+      {{- end }}
       "diagnostics": {
         "enabled": {{ .Values.diagnosticsOtel.enabled }},
         "otel": {
