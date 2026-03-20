@@ -18,3 +18,6 @@ tags = {
 
 # Purview — external E5 tenant "ecardpoc4ecv"
 purview_account_name = "ecardpoc4ecv"
+
+# Tenant Key Vaults managed by Terraform (with Private Link)
+tenant_ids = ["demo-tenant"]

@@ -3,7 +3,7 @@
 # Provision a single OpenClaw tenant
 #
 # This script creates:
-#   1. Per-tenant Key Vault (Premium HSM-backed)
+#   1. Verifies per-tenant Key Vault exists (created by Terraform with Private Link)
 #   2. Per-tenant User-Assigned Managed Identity
 #   3. Workload Identity federation (K8s SA → Entra ID MI)
 #   4. Key Vault RBAC grants
@@ -73,29 +73,14 @@ echo "║  Tier: $TIER | Region: $REGION"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-# ── 1. Create per-tenant Key Vault ────────────────────────
-echo "▶ Step 1: Create per-tenant Key Vault ($KV_NAME)"
+# ── 1. Verify per-tenant Key Vault (created by Terraform with Private Link) ──
+echo "▶ Step 1: Verify per-tenant Key Vault ($KV_NAME)"
 if az keyvault show --name "$KV_NAME" &>/dev/null; then
-  echo "  Key Vault $KV_NAME already exists."
+  echo "  Key Vault $KV_NAME exists (managed by Terraform)."
 else
-  az keyvault create \
-    --name "$KV_NAME" \
-    --resource-group "$RG_NAME" \
-    --location "$REGION" \
-    --sku premium \
-    --enable-purge-protection true \
-    --retention-days 90 \
-    --enable-rbac-authorization true \
-    --no-wait \
-    -o none
-  echo "  Created Key Vault $KV_NAME (premium HSM-backed)."
-fi
-
-# Ensure Key Vault has public network access (required for CSI driver on public AKS)
-KV_PUBLIC_NET=$(az keyvault show --name "$KV_NAME" --query "properties.publicNetworkAccess" -o tsv 2>/dev/null || true)
-if [[ "$KV_PUBLIC_NET" == "Disabled" ]]; then
-  echo "  Enabling public network access on Key Vault..."
-  az keyvault update --name "$KV_NAME" --resource-group "$RG_NAME" --public-network-access Enabled -o none
+  echo "ERROR: Key Vault $KV_NAME not found."
+  echo "  Ensure tenant_ids includes '$TENANT_ID' in terraform.tfvars and run 'terraform apply' first."
+  exit 1
 fi
 
 # ── 2. Create per-tenant Managed Identity ──────────────────
@@ -115,16 +100,9 @@ echo "  Principal ID: $MI_PRINCIPAL_ID"
 # ── 3. Grant MI → Key Vault Secrets User ───────────────────
 echo ""
 echo "▶ Step 3: Grant Key Vault access to Managed Identity"
-# Wait for Key Vault to be ready (it was created with --no-wait)
-for i in {1..30}; do
-  KV_ID=$(az keyvault show --name "$KV_NAME" --query id -o tsv 2>/dev/null || true)
-  [[ -n "$KV_ID" ]] && break
-  echo "  Waiting for Key Vault... ($i/30)"
-  sleep 5
-done
-
+KV_ID=$(az keyvault show --name "$KV_NAME" --query id -o tsv 2>/dev/null || true)
 if [[ -z "$KV_ID" ]]; then
-  echo "ERROR: Key Vault $KV_NAME not ready after 150s."
+  echo "ERROR: Key Vault $KV_NAME not found."
   exit 1
 fi
 

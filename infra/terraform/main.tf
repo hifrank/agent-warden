@@ -75,7 +75,24 @@ module "keyvault" {
   resource_group_name             = data.azurerm_resource_group.main.name
   log_analytics_workspace_id      = module.log_analytics.workspace_id
   aks_kubelet_identity_object_id  = module.aks.kubelet_identity_object_id
+  private_endpoints_subnet_id     = module.vnet.private_endpoints_subnet_id
+  keyvault_private_dns_zone_id    = module.vnet.keyvault_private_dns_zone_id
   tags                            = local.common_tags
+}
+
+# ─── Tenant Key Vaults (per-tenant, managed declaratively) ──
+module "tenant_keyvault" {
+  source   = "./modules/keyvault"
+  for_each = var.tenant_ids
+
+  name                            = "kv-${each.key}"
+  location                        = var.location
+  resource_group_name             = data.azurerm_resource_group.main.name
+  log_analytics_workspace_id      = module.log_analytics.workspace_id
+  aks_kubelet_identity_object_id  = module.aks.kubelet_identity_object_id
+  private_endpoints_subnet_id     = module.vnet.private_endpoints_subnet_id
+  keyvault_private_dns_zone_id    = module.vnet.keyvault_private_dns_zone_id
+  tags                            = merge(local.common_tags, { tenant = each.key })
 }
 
 # ─── Cosmos DB ─────────────────────────────────────────────

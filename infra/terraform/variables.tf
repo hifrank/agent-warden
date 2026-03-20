@@ -76,6 +76,13 @@ variable "tags" {
   default     = {}
 }
 
+# ─── Tenant Configuration ──────────────────────────────────
+variable "tenant_ids" {
+  description = "Set of tenant IDs to create Key Vaults for (e.g., {\"demo-tenant\", \"acme-corp\"})"
+  type        = set(string)
+  default     = []
+}
+
 # ─── Purview (external — E5 tenant) ────────────────────────
 variable "purview_account_name" {
   description = "Purview account name in the E5 tenant (ecardpoc4ecv)"

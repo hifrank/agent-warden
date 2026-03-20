@@ -56,6 +56,21 @@ resource "azurerm_subnet_network_security_group_association" "aks" {
   network_security_group_id = azurerm_network_security_group.aks.id
 }
 
+# ── Private DNS Zones for Private Link ──
+resource "azurerm_private_dns_zone" "keyvault" {
+  name                = "privatelink.vaultcore.azure.net"
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "keyvault" {
+  name                  = "link-kv-to-vnet"
+  resource_group_name   = var.resource_group_name
+  private_dns_zone_name = azurerm_private_dns_zone.keyvault.name
+  virtual_network_id    = azurerm_virtual_network.this.id
+  registration_enabled  = false
+}
+
 output "vnet_id" {
   value = azurerm_virtual_network.this.id
 }
@@ -70,4 +85,8 @@ output "appgw_subnet_id" {
 
 output "private_endpoints_subnet_id" {
   value = azurerm_subnet.private_endpoints.id
+}
+
+output "keyvault_private_dns_zone_id" {
+  value = azurerm_private_dns_zone.keyvault.id
 }

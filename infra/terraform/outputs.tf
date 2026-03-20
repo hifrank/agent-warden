@@ -23,6 +23,11 @@ output "keyvault_uri" {
   value       = module.keyvault.vault_uri
 }
 
+output "tenant_keyvault_uris" {
+  description = "Per-tenant Key Vault URIs"
+  value       = { for k, v in module.tenant_keyvault : k => v.vault_uri }
+}
+
 output "log_analytics_workspace_id" {
   description = "Log Analytics workspace resource ID"
   value       = module.log_analytics.workspace_id
