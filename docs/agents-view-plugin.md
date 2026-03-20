@@ -70,42 +70,55 @@ This two-phase approach lets the span name include the actual command: `execute_
 ## Architecture
 
 ```
-┌──────────────┐      ┌────────────────────────────────────────────────────┐
-│  User        │      │  AKS Cluster                                      │
-│  (Telegram/  │      │                                                    │
-│   Slack/     │──────▶│  StatefulSet: openclaw-{tenant}-0                 │
-│   Discord)   │      │  ┌──────────────────────────────────────────────┐  │
-└──────────────┘      │  │ Init Container: install-agents-view-plugin   │  │
-                      │  │   Copies plugin files + config.json to PVC   │  │
-                      │  └──────────────────┬───────────────────────────┘  │
-                      │                     ▼                              │
-                      │  ┌─────────────────────────────────────────────┐   │
-                      │  │ Container: openclaw-gateway                 │   │
-                      │  │  ┌───────────────────────────────────────┐  │   │
-                      │  │  │ agents-view Plugin (loaded from PVC)  │  │   │
-                      │  │  │  • NodeTracerProvider (singleton)     │  │   │
-                      │  │  │  • BatchSpanProcessor                 │  │   │
-                      │  │  │  • OTLPTraceExporter (HTTP)           │  │   │
-                      │  │  └───────────┬───────────────────────────┘  │   │
-                      │  └──────────────┼──────────────────────────────┘   │
-                      │                 │ OTLP/HTTP :4318                   │
-                      │                 ▼                                   │
-                      │  ┌─────────────────────────────────────────────┐   │
-                      │  │ agent-warden-system namespace               │   │
-                      │  │ OTel Collector DaemonSet                    │   │
-                      │  │   opentelemetry-collector-contrib:0.120.0   │   │
-                      │  │   azuremonitor exporter                     │   │
-                      │  └───────────────┬─────────────────────────────┘   │
-                      └─────────────────┼──────────────────────────────────┘
-                                        │
-                                        ▼
-                      ┌─────────────────────────────────────────────┐
-                      │ Azure Application Insights                  │
-                      │   appi-agentwarden-dev                      │
-                      │   • dependencies table (spans)              │
-                      │   • Agents View blade (Preview)             │
-                      │   • customDimensions (attributes)           │
-                      └─────────────────────────────────────────────┘
+┌──────────────┐      ┌─────────────────────────────────────────────────────────────┐
+│  User        │      │  AKS Cluster (vnet-agentwarden-dev 10.0.0.0/14)            │
+│  (Telegram/  │      │                                                             │
+│   Slack/     │──────▶│  StatefulSet: openclaw-{tenant}-0   (snet-aks 10.0.0.0/16)│
+│   Discord)   │      │  ┌──────────────────────────────────────────────┐           │
+└──────────────┘      │  │ Init Container: install-agents-view-plugin   │           │
+                      │  │   Copies plugin files + config.json to PVC   │           │
+                      │  └──────────────────┬───────────────────────────┘           │
+                      │                     ▼                                       │
+                      │  ┌─────────────────────────────────────────────┐            │
+                      │  │ Container: openclaw-gateway                 │            │
+                      │  │  ┌───────────────────────────────────────┐  │            │
+                      │  │  │ agents-view Plugin (loaded from PVC)  │  │            │
+                      │  │  │  • NodeTracerProvider (singleton)     │  │            │
+                      │  │  │  • BatchSpanProcessor                 │  │            │
+                      │  │  │  • OTLPTraceExporter (HTTP)           │  │            │
+                      │  │  └───────────┬───────────────────────────┘  │            │
+                      │  └──────────────┼──────────────────────────────┘            │
+                      │                 │ OTLP/HTTP :4318                            │
+                      │                 ▼                                            │
+                      │  ┌─────────────────────────────────────────────┐            │
+                      │  │ agent-warden-system namespace               │            │
+                      │  │ OTel Collector DaemonSet                    │            │
+                      │  │   opentelemetry-collector-contrib:0.120.0   │            │
+                      │  │   azuremonitor exporter                     │            │
+                      │  └───────────────┬─────────────────────────────┘            │
+                      │                  │                                           │
+                      │  ┌───────────────┼─────────────────────────────────────┐    │
+                      │  │ snet-pe (10.1.1.0/24) — Private Endpoints           │    │
+                      │  │  ┌──────────────────────┐  ┌─────────────────────┐  │    │
+                      │  │  │ pe-kv-demo-tenant    │  │ pe-kv-plat-*        │  │    │
+                      │  │  │ → kv-demo-tenant     │  │ → kv-plat-*         │  │    │
+                      │  │  └──────────┬───────────┘  └──────────┬──────────┘  │    │
+                      │  └─────────────┼──────────────────────────┼─────────────┘    │
+                      └────────────────┼──────────────────────────┼──────────────────┘
+                                       │ Private Link             │
+                      ┌────────────────┼──────────────────────────┼──────────────────┐
+                      │ Azure PaaS     │                          │                  │
+                      │                ▼                          ▼                  │
+                      │  ┌──────────────────────┐  ┌──────────────────────────────┐  │
+                      │  │ Key Vault             │  │ Application Insights         │  │
+                      │  │ kv-demo-tenant        │  │ appi-agentwarden-dev         │  │
+                      │  │ (public access: OFF)  │  │ • dependencies table (spans) │  │
+                      │  │ Premium HSM-backed    │  │ • Agents View blade          │  │
+                      │  │ RBAC authorization    │  │ • customDimensions           │  │
+                      │  └──────────────────────┘  └──────────────────────────────┘  │
+                      │                                                              │
+                      │  DNS: privatelink.vaultcore.azure.net → Private IP           │
+                      └──────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
@@ -160,6 +173,7 @@ sequenceDiagram
 | **OTel Collector** | `opentelemetry-collector-contrib` DaemonSet in `agent-warden-system` namespace with `azuremonitor` exporter configured |
 | **Azure Application Insights** | An App Insights resource with a valid connection string configured in the OTel Collector |
 | **Azure Container Registry** | ACR with the `agents-view-plugin` image pushed |
+| **Azure Key Vault** | Per-tenant Key Vault with Private Endpoint in `snet-pe` subnet, Private DNS Zone (`privatelink.vaultcore.azure.net`) linked to VNet, public network access disabled |
 | **LiteLLM Configuration** | `stream_options: { include_usage: true }` in `litellm_params` per-model to enable token tracking in streaming responses |
 | **OpenClaw Gateway** | Gateway mode (Telegram/Slack/Discord channels) — **not** embedded CLI mode |
 
@@ -353,6 +367,73 @@ dependencies
 
 ---
 
+## Network Security
+
+All Key Vault access uses **Azure Private Link** — no public network exposure.
+
+### Architecture
+
+```
+VNet: vnet-agentwarden-dev (10.0.0.0/14)
+├── snet-aks    (10.0.0.0/16)  — AKS nodes + pods
+├── snet-agc    (10.1.0.0/24)  — Application Gateway for Containers
+└── snet-pe     (10.1.1.0/24)  — Private Endpoints
+    ├── pe-kv-demo-tenant       → kv-demo-tenant
+    └── pe-kv-plat-*            → kv-plat-agentwarden-dev
+
+Private DNS Zone: privatelink.vaultcore.azure.net
+└── Linked to vnet-agentwarden-dev
+    ├── kv-demo-tenant.vault.azure.net         → 10.1.1.x (private IP)
+    └── kv-plat-agentwarden-dev.vault.azure.net → 10.1.1.y (private IP)
+```
+
+### Key Vault Configuration
+
+| Setting | Value |
+|---|---|
+| SKU | Premium (HSM-backed, FIPS 140-2 Level 3) |
+| Public network access | **Disabled** |
+| Network ACLs | Default action: `Deny`, Bypass: `AzureServices` |
+| Authorization | RBAC (no access policies) |
+| Private Endpoint | In `snet-pe` with auto-registered DNS |
+| Purge protection | Enabled (90-day retention) |
+
+### Secret Access Flow
+
+```
+Pod (openclaw-demo-tenant-0)
+  → CSI Secret Store Driver
+    → Managed Identity (mi-demo-tenant) via Workload Identity
+      → DNS: kv-demo-tenant.vault.azure.net
+        → Private DNS Zone resolves to 10.1.1.x
+          → Private Endpoint in snet-pe
+            → Key Vault (kv-demo-tenant)
+              → Secret: openai-api-key
+```
+
+### Terraform Management
+
+Tenant Key Vaults are managed declaratively via Terraform:
+
+```hcl
+# infra/terraform/environments/dev/terraform.tfvars
+tenant_ids = ["demo-tenant"]
+
+# infra/terraform/main.tf
+module "tenant_keyvault" {
+  source   = "./modules/keyvault"
+  for_each = var.tenant_ids
+  # Creates: KV + Private Endpoint + DNS record + RBAC + diagnostics
+}
+```
+
+To add a new tenant's Key Vault:
+1. Add the tenant ID to `tenant_ids` in `terraform.tfvars`
+2. Run `terraform apply` — creates KV, Private Endpoint, DNS record, RBAC, and diagnostics
+3. Run `provision-tenant.sh` — creates MI, Workload Identity federation, and Helm release
+
+---
+
 ## Limitations
 
 | Limitation | Details |
@@ -374,6 +455,7 @@ dependencies
 
 | Version | Changes |
 |---|---|
+| **0.3.1** | Key Vault Private Link — per-tenant KVs managed by Terraform with Private Endpoints, public access disabled. |
 | **0.3.0** | Production release. Tool detail enrichment (command, exitCode, durationMs, result). Cleaned up diagnostic logging. |
 | **0.2.0** | Production cleanup. Switched to `BatchSpanProcessor`, removed debug logging. |
 | **0.1.7** | Fixed v2 SDK `provider.addSpanProcessor()` removal — use constructor `spanProcessors` array. |
