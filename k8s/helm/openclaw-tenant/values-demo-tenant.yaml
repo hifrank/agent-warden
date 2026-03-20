@@ -60,6 +60,22 @@ saasProxy:
     tag: "latest"
     pullPolicy: Always
 
+# -- Browser init container (Chrome + CJK fonts via emptyDir)
+browserInit:
+  enabled: true
+  image:
+    repository: acragentwardendev.azurecr.io/browser-init
+    tag: "latest"
+    pullPolicy: Always
+
+# -- Agents View (OTel GenAI spans → Azure Monitor)
+agentsViewPlugin:
+  enabled: true
+  image:
+    repository: acragentwardendev.azurecr.io/agents-view-plugin
+    tag: "0.3.0"
+    pullPolicy: IfNotPresent
+
 # -- Sandbox disabled: simplify for pure OpenClaw
 sandbox:
   enabled: false

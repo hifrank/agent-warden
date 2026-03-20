@@ -151,8 +151,8 @@ ENTRA_TENANT_ID=$(az account show --query tenantId -o tsv)
 # ── 6. Deploy via Helm ─────────────────────────────────────
 echo ""
 echo "▶ Step 5: Deploy OpenClaw tenant via Helm"
-# Use custom OpenClaw image with agent-browser/Chrome pre-installed (built from agent-warden-openclaw/Dockerfile)
-OPENCLAW_IMAGE="${ACR_SERVER:+${ACR_SERVER}/openclaw-custom}"
+# Browser support via init container (copies Chrome + libs + fonts to emptyDir volume)
+# Agents View plugin emits OTel GenAI spans for Azure Monitor
 helm upgrade --install "$HELM_RELEASE" "$CHART_PATH" \
   --namespace "$NAMESPACE" \
   --create-namespace \
@@ -161,7 +161,9 @@ helm upgrade --install "$HELM_RELEASE" "$CHART_PATH" \
   --set "keyVault.name=${KV_NAME}" \
   --set "keyVault.clientId=${MI_CLIENT_ID}" \
   --set "keyVault.tenantIdEntra=${ENTRA_TENANT_ID}" \
-  ${OPENCLAW_IMAGE:+--set "image.repository=${OPENCLAW_IMAGE}"} \
+  --set "browserInit.enabled=true" \
+  --set "browserInit.image.pullPolicy=Always" \
+  --set "agentsViewPlugin.enabled=true" \
   --wait \
   --timeout 5m
 
