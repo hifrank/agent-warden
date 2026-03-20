@@ -164,6 +164,17 @@ browserInit:
     headless: true
     noSandbox: true
 
+# -- Heartbeat sidecar (probes gateway health → OTel metrics → App Insights)
+heartbeat:
+  enabled: false
+  intervalMs: 30000
+  otelEndpoint: "http://otel-collector.agent-warden-system.svc.cluster.local:4318/v1/metrics"
+  serviceName: "openclaw-heartbeat"
+  image:
+    repository: acragentwardendev.azurecr.io/heartbeat
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
 # -- OpenTelemetry diagnostics (§21 Monitoring)
 # Exports traces, metrics, and logs from OpenClaw gateway to OTel Collector → App Insights.
 diagnosticsOtel:

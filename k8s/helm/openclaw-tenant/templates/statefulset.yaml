@@ -513,6 +513,37 @@ spec:
               drop: ["ALL"]
         {{- end }}
 
+        # ── Heartbeat sidecar — probes gateway health, emits OTel metrics ──
+        {{- if .Values.heartbeat.enabled }}
+        - name: heartbeat
+          image: {{ .Values.heartbeat.image.repository }}:{{ .Values.heartbeat.image.tag }}
+          imagePullPolicy: {{ .Values.heartbeat.image.pullPolicy }}
+          env:
+            - name: TENANT_ID
+              value: {{ .Values.tenantId | quote }}
+            - name: GATEWAY_URL
+              value: "http://127.0.0.1:18789"
+            - name: OTEL_ENDPOINT
+              value: {{ .Values.heartbeat.otelEndpoint | quote }}
+            - name: INTERVAL_MS
+              value: {{ .Values.heartbeat.intervalMs | quote }}
+            - name: SERVICE_NAME
+              value: {{ .Values.heartbeat.serviceName | quote }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+        {{- end }}
+
         # ── Optional: git-sync sidecar for workspace memory (§4.5.9) ──
         {{- if .Values.gitSync.enabled }}
         - name: workspace-git-sync

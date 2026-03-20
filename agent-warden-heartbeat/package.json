@@ -1,0 +1,26 @@
+{
+  "name": "agent-warden-heartbeat",
+  "version": "0.1.0",
+  "description": "Sidecar heartbeat monitor — probes OpenClaw gateway health and emits OTel metrics to App Insights",
+  "private": true,
+  "type": "module",
+  "main": "dist/heartbeat.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/heartbeat.js"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-metrics": "^2.6.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.213.0",
+    "@opentelemetry/resources": "^2.6.0",
+    "@opentelemetry/semantic-conventions": "^1.40.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

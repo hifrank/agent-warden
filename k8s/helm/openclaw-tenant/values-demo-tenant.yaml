@@ -76,6 +76,14 @@ agentsViewPlugin:
     tag: "0.3.0"
     pullPolicy: IfNotPresent
 
+# -- Heartbeat sidecar (gateway health → App Insights)
+heartbeat:
+  enabled: true
+  image:
+    repository: acragentwardendev.azurecr.io/heartbeat
+    tag: "latest"
+    pullPolicy: Always
+
 # -- Sandbox disabled: simplify for pure OpenClaw
 sandbox:
   enabled: false
