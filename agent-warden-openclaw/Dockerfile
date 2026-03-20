@@ -12,25 +12,25 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
     libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
     libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
-    libatspi2.0-0 libwayland-client0 \
+    libatspi2.0-0 libwayland-client0 libdbus-1-3 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g agent-browser && npm cache clean --force
 RUN agent-browser install
 RUN cp -r /root/.agent-browser /opt/agent-browser
 
-# ── Runtime stage: minimal image with just the browser files + deps ──
-FROM debian:bookworm-slim
+# Collect Chrome's shared-library dependencies into /opt/agent-browser/lib
+# so the gateway container can use them via LD_LIBRARY_PATH.
+RUN mkdir -p /opt/agent-browser/lib && \
+    CHROME=$(find /opt/agent-browser -name chrome -type f | head -1) && \
+    ldd "$CHROME" 2>/dev/null | grep '=>' | awk '{print $3}' | \
+    while read -r lib; do [ -f "$lib" ] && cp -L "$lib" /opt/agent-browser/lib/; done && \
+    echo "Collected $(ls /opt/agent-browser/lib/ | wc -l) shared libs"
 
-# Install only the Chrome runtime shared libraries (no npm needed)
-RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-    libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-    libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
-    libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
-    libatspi2.0-0 libwayland-client0 \
-    && rm -rf /var/lib/apt/lists/*
+# ── Runtime stage: minimal image with browser files + shared libs ──
+FROM debian:bookworm-slim
 
 COPY --from=builder /opt/agent-browser /opt/agent-browser
 
-# Default entrypoint: copy browser files to the target volume
+# Default entrypoint: copy browser files + libs to the target volume
 ENTRYPOINT ["sh", "-c", "cp -a /opt/agent-browser/. /target/ && echo 'Browser files copied to /target/'"]

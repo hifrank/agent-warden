@@ -276,6 +276,10 @@ spec:
               value: "/data/state/npm-global/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
             - name: AGENT_BROWSER_HOME
               value: /opt/agent-browser
+            {{- if .Values.browserInit.enabled }}
+            - name: LD_LIBRARY_PATH
+              value: /opt/agent-browser/lib
+            {{- end }}
             - name: XDG_RUNTIME_DIR
               value: /tmp
             {{- if .Values.litellmProxy.enabled }}
