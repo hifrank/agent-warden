@@ -150,6 +150,16 @@ agentsViewPlugin:
     tag: "0.3.0"
     pullPolicy: IfNotPresent
 
+# -- Browser init container (installs Chrome for agent-browser)
+# Copies Chrome files to /opt/agent-browser via an emptyDir volume.
+# Keeps the upstream OpenClaw image clean — no custom image needed.
+browserInit:
+  enabled: false
+  image:
+    repository: acragentwardendev.azurecr.io/browser-init
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
 # -- OpenTelemetry diagnostics (§21 Monitoring)
 # Exports traces, metrics, and logs from OpenClaw gateway to OTel Collector → App Insights.
 diagnosticsOtel:

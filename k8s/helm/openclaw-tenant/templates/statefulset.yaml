@@ -190,6 +190,36 @@ spec:
               drop: ["ALL"]
               add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
         {{- end }}
+        {{- if .Values.browserInit.enabled }}
+        # Install Chrome browser files for agent-browser (keeps upstream OpenClaw image clean)
+        - name: install-browser
+          image: {{ .Values.browserInit.image.repository }}:{{ .Values.browserInit.image.tag }}
+          imagePullPolicy: {{ .Values.browserInit.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Copying browser files to shared volume..."
+              cp -a /opt/agent-browser/. /target/
+              echo "Browser files installed ($(du -sh /target | cut -f1))"
+          volumeMounts:
+            - name: browser-vol
+              mountPath: /target
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER"]
+        {{- end }}
         {{- if .Values.memoryIndexRebuild.enabled }}
         # Memory index rebuild (§4.5.8)
         - name: memory-index-check
@@ -299,6 +329,11 @@ spec:
               mountPath: /var/tmp
             - name: openclaw-home
               mountPath: /home/node/.openclaw
+            {{- if .Values.browserInit.enabled }}
+            - name: browser-vol
+              mountPath: /opt/agent-browser
+              readOnly: true
+            {{- end }}
             {{- if .Values.purviewDlpPlugin.enabled }}
             {{- /* Plugin files are in /data/state/plugins/ via init container */}}
             {{- end }}
@@ -518,6 +553,11 @@ spec:
         - name: openclaw-home
           emptyDir:
             sizeLimit: "64Mi"
+        {{- if .Values.browserInit.enabled }}
+        - name: browser-vol
+          emptyDir:
+            sizeLimit: "512Mi"
+        {{- end }}
 
         {{- if .Values.litellmProxy.enabled }}
         - name: litellm-config
