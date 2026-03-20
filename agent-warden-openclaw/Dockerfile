@@ -21,10 +21,16 @@ RUN cp -r /root/.agent-browser /opt/agent-browser
 
 # Collect Chrome's shared-library dependencies into /opt/agent-browser/lib
 # so the gateway container can use them via LD_LIBRARY_PATH.
+# Also copy NSS PKCS#11 modules (libsoftokn3, libfreeblpriv3) that Chrome
+# loads at runtime via dlopen — these aren't caught by ldd.
 RUN mkdir -p /opt/agent-browser/lib && \
     CHROME=$(find /opt/agent-browser -name chrome -type f | head -1) && \
     ldd "$CHROME" 2>/dev/null | grep '=>' | awk '{print $3}' | \
     while read -r lib; do [ -f "$lib" ] && cp -L "$lib" /opt/agent-browser/lib/; done && \
+    for nss in libsoftokn3.so libfreeblpriv3.so libfreebl3.so; do \
+      f=$(find /usr/lib -name "$nss" 2>/dev/null | head -1); \
+      [ -f "$f" ] && cp -L "$f" /opt/agent-browser/lib/; \
+    done && \
     echo "Collected $(ls /opt/agent-browser/lib/ | wc -l) shared libs"
 
 # Create google-chrome symlink so tools can find Chrome at a standard path.
