@@ -13,6 +13,7 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
     libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
     libatspi2.0-0 libwayland-client0 libdbus-1-3 \
+    fonts-noto-cjk fonts-noto-color-emoji fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g agent-browser && npm cache clean --force
@@ -37,6 +38,13 @@ RUN mkdir -p /opt/agent-browser/lib && \
 RUN mkdir -p /opt/agent-browser/bin && \
     CHROME=$(find /opt/agent-browser/browsers -name chrome -type f | head -1) && \
     ln -s "$CHROME" /opt/agent-browser/bin/google-chrome
+
+# Bundle CJK + emoji fonts so Chrome can render Chinese, Japanese, Korean, and emoji.
+RUN cp -r /usr/share/fonts /opt/agent-browser/fonts && \
+    mkdir -p /opt/agent-browser/fontconfig && \
+    printf '<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n<fontconfig>\n  <dir>/opt/agent-browser/fonts</dir>\n  <cachedir>/tmp/fontconfig-cache</cachedir>\n</fontconfig>\n' \
+      > /opt/agent-browser/fontconfig/fonts.conf && \
+    echo "Fonts bundled: $(find /opt/agent-browser/fonts -name '*.ttf' -o -name '*.otf' -o -name '*.ttc' | wc -l) files"
 
 # ── Runtime stage: minimal image with browser files + shared libs ──
 FROM debian:bookworm-slim

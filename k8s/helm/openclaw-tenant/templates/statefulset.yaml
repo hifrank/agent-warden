@@ -283,6 +283,8 @@ spec:
             {{- if .Values.browserInit.enabled }}
             - name: LD_LIBRARY_PATH
               value: /opt/agent-browser/lib
+            - name: FONTCONFIG_FILE
+              value: /opt/agent-browser/fontconfig/fonts.conf
             {{- end }}
             - name: XDG_RUNTIME_DIR
               value: /tmp
@@ -564,7 +566,7 @@ spec:
         {{- if .Values.browserInit.enabled }}
         - name: browser-vol
           emptyDir:
-            sizeLimit: "512Mi"
+            sizeLimit: "1Gi"
         {{- end }}
 
         {{- if .Values.litellmProxy.enabled }}
