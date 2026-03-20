@@ -27,6 +27,11 @@ RUN mkdir -p /opt/agent-browser/lib && \
     while read -r lib; do [ -f "$lib" ] && cp -L "$lib" /opt/agent-browser/lib/; done && \
     echo "Collected $(ls /opt/agent-browser/lib/ | wc -l) shared libs"
 
+# Create google-chrome symlink so tools can find Chrome at a standard path.
+RUN mkdir -p /opt/agent-browser/bin && \
+    CHROME=$(find /opt/agent-browser/browsers -name chrome -type f | head -1) && \
+    ln -s "$CHROME" /opt/agent-browser/bin/google-chrome
+
 # ── Runtime stage: minimal image with browser files + shared libs ──
 FROM debian:bookworm-slim
 

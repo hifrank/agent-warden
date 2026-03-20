@@ -273,7 +273,11 @@ spec:
             - name: NODE_ENV
               value: production
             - name: PATH
+              {{- if .Values.browserInit.enabled }}
+              value: "/opt/agent-browser/bin:/data/state/npm-global/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+              {{- else }}
               value: "/data/state/npm-global/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+              {{- end }}
             - name: AGENT_BROWSER_HOME
               value: /opt/agent-browser
             {{- if .Values.browserInit.enabled }}
