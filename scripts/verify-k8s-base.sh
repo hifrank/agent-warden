@@ -239,11 +239,11 @@ fi
 
 # ── 12. RuntimeClass ─────────────────────────────────────
 check_header "RuntimeClass"
-if kubectl get runtimeclass kata-mshv-vm-isolation &>/dev/null; then
-  HANDLER=$(kubectl get runtimeclass kata-mshv-vm-isolation -o jsonpath='{.handler}')
-  pass "RuntimeClass kata-mshv-vm-isolation exists (handler: $HANDLER)"
+if kubectl get runtimeclass kata-vm-isolation &>/dev/null; then
+  HANDLER=$(kubectl get runtimeclass kata-vm-isolation -o jsonpath='{.handler}')
+  pass "RuntimeClass kata-vm-isolation exists (handler: $HANDLER)"
 else
-  warn "RuntimeClass kata-mshv-vm-isolation not found (sandbox isolation may not work)"
+  warn "RuntimeClass kata-vm-isolation not found (sandbox isolation may not work)"
 fi
 
 # ── 13. Operator Deployment ──────────────────────────────

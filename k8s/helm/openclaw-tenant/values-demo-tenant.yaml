@@ -86,6 +86,10 @@ heartbeat:
     tag: "latest"
     pullPolicy: Always
 
-# -- Sandbox disabled: simplify for pure OpenClaw
+# -- Sandbox enabled: Kata Containers for tool execution isolation
 sandbox:
-  enabled: false
+  enabled: true
+  image:
+    repository: acragentwardendev.azurecr.io/openclaw-sandbox
+    tag: "latest"
+    pullPolicy: IfNotPresent

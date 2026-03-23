@@ -23,11 +23,16 @@ data:
         openclaw.io/component: sandbox
         openclaw.io/tenant: {{ .Values.tenantId }}
     spec:
-      runtimeClassName: kata-mshv-vm-isolation
+      runtimeClassName: kata-vm-isolation
       restartPolicy: Never
       activeDeadlineSeconds: {{ .Values.sandbox.timeoutSeconds }}
       serviceAccountName: openclaw-{{ .Values.tenantId }}-sandbox
       automountServiceAccountToken: false
+      tolerations:
+        - key: "openclaw.io/sandbox-only"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534

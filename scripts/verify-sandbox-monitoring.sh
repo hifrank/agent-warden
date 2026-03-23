@@ -15,12 +15,12 @@ echo "════════════════════════�
 
 # ─── 1. RuntimeClass ──────────────────────────────────────
 echo -e "\n▸ RuntimeClass"
-if kubectl get runtimeclass kata-mshv-vm-isolation &>/dev/null; then
-  pass "RuntimeClass kata-mshv-vm-isolation exists"
-  HANDLER=$(kubectl get runtimeclass kata-mshv-vm-isolation -o jsonpath='{.handler}')
-  [[ "$HANDLER" == "kata-mshv-vm-isolation" ]] && pass "Handler correct" || fail "Handler: $HANDLER"
+if kubectl get runtimeclass kata-vm-isolation &>/dev/null; then
+  pass "RuntimeClass kata-vm-isolation exists"
+  HANDLER=$(kubectl get runtimeclass kata-vm-isolation -o jsonpath='{.handler}')
+  [[ "$HANDLER" == "kata" ]] && pass "Handler correct" || fail "Handler: $HANDLER"
 else
-  fail "RuntimeClass kata-mshv-vm-isolation not found"
+  fail "RuntimeClass kata-vm-isolation not found"
 fi
 
 # ─── 2. Sandbox node pool ────────────────────────────────
@@ -76,7 +76,7 @@ echo -e "\n▸ Helm Sandbox Template"
 HELM_DIR="k8s/helm/openclaw-tenant"
 if [[ -f "$HELM_DIR/templates/sandbox.yaml" ]]; then
   pass "sandbox.yaml template exists"
-  grep -q "kata-mshv-vm-isolation" "$HELM_DIR/templates/sandbox.yaml" && pass "Uses Kata runtime class" || fail "Missing Kata runtime"
+  grep -q "kata-vm-isolation" "$HELM_DIR/templates/sandbox.yaml" && pass "Uses Kata runtime class" || fail "Missing Kata runtime"
   grep -q "automountServiceAccountToken: false" "$HELM_DIR/templates/sandbox.yaml" && pass "SA token mounting disabled" || fail "SA token not disabled"
   grep -q "readOnlyRootFilesystem" "$HELM_DIR/templates/sandbox.yaml" && pass "Read-only root filesystem" || fail "Missing readOnlyRootFilesystem"
   grep -q "drop:" "$HELM_DIR/templates/sandbox.yaml" && pass "Capabilities dropped" || fail "Capabilities not dropped"
@@ -112,7 +112,7 @@ metadata:
   name: $TEST_POD
   namespace: $NAMESPACE
 spec:
-  runtimeClassName: kata-mshv-vm-isolation
+  runtimeClassName: kata-vm-isolation
   restartPolicy: Never
   activeDeadlineSeconds: 30
   automountServiceAccountToken: false

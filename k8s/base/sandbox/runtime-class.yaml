@@ -1,22 +1,23 @@
 # RuntimeClass for AKS Pod Sandboxing with Kata Containers (§4.1.1)
-# Pods using this class run inside Hyper-V microVMs on Azure Linux nodes.
-# Defender eBPF cannot penetrate the microVM boundary — see §4.1.1 for
-# compensating controls.
-apiVersion: node.k8s.io/v1
-kind: RuntimeClass
-metadata:
-  name: kata-mshv-vm-isolation
-handler: kata-mshv-vm-isolation
-overhead:
-  podFixed:
-    memory: "160Mi"
-    cpu: "250m"
-scheduling:
-  nodeSelector:
-    kubernetes.azure.com/os-sku: AzureLinux
-    openclaw.io/pool: sandbox
-  tolerations:
-    - key: "openclaw.io/sandbox-only"
-      operator: "Equal"
-      value: "true"
-      effect: "NoSchedule"
+# AKS auto-manages the kata-vm-isolation RuntimeClass when the node pool
+# has workloadRuntime=KataMshvVmIsolation. It injects:
+#   nodeSelector: kubernetes.azure.com/kata-vm-isolation=true
+#   overhead: memory=600Mi
+#
+# We do NOT apply this file — it's kept as documentation only.
+# The sandbox pod template in sandbox.yaml adds the openclaw.io/sandbox-only
+# toleration directly in the pod spec since the AKS-managed RuntimeClass
+# doesn't include custom tolerations.
+#
+# AKS-managed RuntimeClass (for reference):
+# apiVersion: node.k8s.io/v1
+# kind: RuntimeClass
+# metadata:
+#   name: kata-vm-isolation
+# handler: kata
+# overhead:
+#   podFixed:
+#     memory: "600Mi"
+# scheduling:
+#   nodeSelector:
+#     kubernetes.azure.com/kata-vm-isolation: "true"

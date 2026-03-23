@@ -156,7 +156,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "sandbox" {
   os_disk_size_gb       = 128
   os_sku                = "AzureLinux"  # Required for Kata Containers
   zones                 = ["1", "3"]
-  workload_runtime      = "OCIContainer"  # KataMshvVmIsolation not yet supported in azurerm v4.x
+  workload_runtime      = "KataMshvVmIsolation"
 
   auto_scaling_enabled = true
   min_count            = var.sandbox_node_min_count

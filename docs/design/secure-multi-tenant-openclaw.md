@@ -145,7 +145,7 @@ securityContext:
 
 OpenClaw tenants execute untrusted code via Pi Agent tool calls and skills inside Docker sandboxes. In multi-tenant hosting, these sandbox executions represent the **highest escape risk** — a malicious or compromised tool could attempt to break out of the container and reach the host kernel.
 
-**AKS Pod Sandboxing** uses **Kata Containers** (`kata-mshv-vm-isolation`) to run sandbox pods inside lightweight Hyper-V microVMs, adding a hardware VM boundary between untrusted code and the host kernel.
+**AKS Pod Sandboxing** uses **Kata Containers** (`kata-vm-isolation`) to run sandbox pods inside lightweight Hyper-V microVMs, adding a hardware VM boundary between untrusted code and the host kernel.
 
 #### Hybrid Node Pool Architecture
 
@@ -174,7 +174,7 @@ The platform uses a **three-pool hybrid architecture** that balances Kata VM iso
 │  │  • Tool execution pods                │ ← Defender: K8s audit +     │
 │  │  • Skill sandbox containers           │   image scan only           │
 │  │  • Ephemeral (no PVCs)                │   (no eBPF inside microVM)  │
-│  │  RuntimeClass: kata-mshv-vm-isolation │                              │
+│  │  RuntimeClass: kata-vm-isolation    │                              │
 │  └───────────────────────────────────────┘                              │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -183,7 +183,7 @@ The platform uses a **three-pool hybrid architecture** that balances Kata VM iso
 |---|---|---|---|---|
 | `system` | `runc` (default) | Control plane pods | Full | No |
 | `tenant` | `runc` (default) | OpenClaw Gateway, DLP Proxy, PVCs | Full | No |
-| `sandbox` | `kata-mshv-vm-isolation` | Tool/skill execution containers | K8s audit + image scan only | Yes (Hyper-V microVM) |
+| `sandbox` | `kata-vm-isolation` | Tool/skill execution containers | K8s audit + image scan only | Yes (Hyper-V microVM) |
 
 #### Why This Split Preserves Defender Coverage
 
@@ -419,7 +419,7 @@ Agent Warden: warden.dlp.scan()     ◄── Intercept Point 4 (input)
          │
          ▼
 K8s API: Create sandbox Pod
-         │ - runtimeClassName: kata-mshv-vm-isolation
+         │ - runtimeClassName: kata-vm-isolation
          │ - entrypoint: /usr/local/bin/sandbox-monitor
          │ - args: ["--", "node", "/skill/index.js", "--query", "..."]
          │
@@ -462,8 +462,8 @@ Continue conversation
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: kata-mshv-vm-isolation
-handler: kata-mshv-vm-isolation
+  name: kata-vm-isolation
+handler: kata
 overhead:
   podFixed:
     memory: "160Mi"    # Hyper-V microVM overhead
@@ -486,7 +486,7 @@ metadata:
     openclaw.io/component: sandbox
     openclaw.io/tenant: <tenant-id>
 spec:
-  runtimeClassName: kata-mshv-vm-isolation    # VM-level isolation
+  runtimeClassName: kata-vm-isolation    # VM-level isolation
   restartPolicy: Never
   activeDeadlineSeconds: 300                   # Hard kill after 5 min
   serviceAccountName: openclaw-<tenant-id>-sandbox   # Minimal SA, no Key Vault access
@@ -1331,7 +1331,7 @@ Policies defined as declarative rules:
 │                                                                     │
 │  ┌──────────────────────────────┐                                   │
 │  │ Pod: sandbox-<id>-<session>  │   RuntimeClass:                   │
-│  │ (ephemeral tool execution)   │     kata-mshv-vm-isolation        │
+│  │ (ephemeral tool execution)   │     kata-vm-isolation              │
 │  │ No PVCs, no secrets access   │   Hyper-V microVM isolation       │
 │  └──────────────────────────────┘                                   │
 │  Node pool: sandbox (Kata) — Defender K8s audit + image scan only   │

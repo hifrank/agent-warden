@@ -112,7 +112,7 @@ Tool execution runs inside hardware-isolated Hyper-V microVMs.
 
 | Technique | Description | Component |
 |-----------|-------------|-----------|
-| Kata Containers (`kata-mshv-vm-isolation`) | Each tool execution pod runs in a Hyper-V microVM — hardware boundary between untrusted code and host kernel | RuntimeClass, Terraform AKS sandbox pool |
+| Kata Containers (`kata-vm-isolation`) | Each tool execution pod runs in a Hyper-V microVM — hardware boundary between untrusted code and host kernel | RuntimeClass, Terraform AKS sandbox pool |
 | Sandbox monitor (PID 1) | TypeScript process running as PID 1 inside the microVM; forks tool process and monitors its behavior | [monitor.ts](../../sandbox-monitor/src/monitor.ts) |
 | Suspicious binary detection | Flags execution of `curl`, `wget`, `nc`, `nmap`, `ssh`, `python`, `perl`, and shell interpreters | Sandbox monitor |
 | Suspicious file detection | Regex patterns for `.sh`, `.py`, `reverse.?shell`, `exploit`, `backdoor`, `payload`, `meterpreter` | Sandbox monitor |
