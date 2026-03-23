@@ -344,7 +344,7 @@ dependencies
 | `gen_ai.tool.target_path` | `/workspace/file.txt` | Target file (for read/write tools) |
 | `gen_ai.tool.result` | `HTTP/2 200...` | First 500 chars of tool output |
 | `tool.exit_code` | `0` | Process exit code |
-| `tool.duration_ms` | `61` | Sandbox execution time |
+| `tool.duration_ms` | `61` | Tool execution time |
 | `tool.cwd` | `/home/node/.openclaw/workspace` | Working directory |
 | `tool.status` | `completed` | Execution status |
 | `tool.is_error` | `true` | Tool reported error |

@@ -220,21 +220,4 @@ saasProxy:
       allow: []
       deny: []
 
-# -- Kata sandbox for tool execution (§4.1.1)
-# Pods run inside Hyper-V microVMs on Azure Linux nodes.
-# Defender eBPF has no visibility inside the microVM — see design doc for compensating controls.
-sandbox:
-  enabled: true
-  timeoutSeconds: 120      # Hard kill after this duration
-  scratchSizeLimit: "256Mi"
-  image:
-    repository: ghcr.io/openclaw/openclaw-sandbox
-    tag: "latest"
-    pullPolicy: IfNotPresent
-  resources:
-    requests:
-      cpu: "250m"
-      memory: "256Mi"
-    limits:
-      cpu: "1"
-      memory: "512Mi"
+

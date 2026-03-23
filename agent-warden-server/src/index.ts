@@ -17,7 +17,6 @@ import {
 import { checkTenantHealth, checkAllTenantsHealth } from "./tools/health-check.js";
 import { listInstances, getInstance, getFleetSummary } from "./tools/inventory.js";
 import { dlpScan, listDLPPolicies, listDLPIncidents } from "./tools/dlp.js";
-import { reportSandboxExecution, querySandboxAudit } from "./tools/sandbox.js";
 import {
   provisionAgentIdentity,
   connectSaaSProvider,
@@ -279,108 +278,6 @@ server.tool(
     return {
       content: [
         { type: "text" as const, text: JSON.stringify(incidents, null, 2) },
-      ],
-    };
-  }
-);
-
-// ─── Sandbox Monitoring Tools (§4.1.1) ────────────────────
-
-server.tool(
-  "warden.sandbox.report",
-  "Process sandbox execution telemetry from sandbox-monitor (Kata microVM). Records audit trail and triggers incidents for high-risk executions.",
-  {
-    telemetry: z.object({
-      version: z.string(),
-      type: z.literal("sandbox.telemetry"),
-      tenantId: z.string(),
-      sessionId: z.string(),
-      toolName: z.string(),
-      skillName: z.string(),
-      execution: z.object({
-        command: z.string(),
-        exitCode: z.number().nullable(),
-        signal: z.string().nullable(),
-        durationMs: z.number(),
-        startedAt: z.string(),
-        finishedAt: z.string(),
-      }),
-      processes: z.object({
-        total: z.number(),
-        tree: z.array(z.object({
-          pid: z.number(),
-          ppid: z.number(),
-          comm: z.string(),
-          args: z.string(),
-        })),
-        suspicious: z.array(z.string()),
-      }),
-      syscalls: z.object({
-        blocked: z.array(z.object({ syscall: z.string(), count: z.number() })),
-        totalAuditEvents: z.number(),
-      }),
-      filesystem: z.object({
-        filesCreated: z.array(z.string()),
-        filesModified: z.array(z.string()),
-        totalBytesWritten: z.number(),
-        suspiciousFiles: z.array(z.string()),
-      }),
-      network: z.object({
-        connections: z.array(z.object({
-          proto: z.string(),
-          remoteAddr: z.string(),
-          remotePort: z.number(),
-          state: z.string(),
-        })),
-        dnsQueries: z.array(z.string()),
-        totalBytesOut: z.number(),
-        totalBytesIn: z.number(),
-      }),
-      resources: z.object({
-        cpuMs: z.number(),
-        memoryPeakMb: z.number(),
-        ioBytesRead: z.number(),
-        ioBytesWrite: z.number(),
-      }),
-      risk: z.object({
-        score: z.number(),
-        factors: z.array(z.string()),
-        action: z.enum(["allow", "flag", "alert"]),
-      }),
-    }).describe("Telemetry JSON produced by sandbox-monitor inside Kata microVM"),
-  },
-  async ({ telemetry }) => {
-    const result = await reportSandboxExecution(
-      telemetry,
-      config.AZURE_COSMOS_ENDPOINT,
-      config.AZURE_COSMOS_DATABASE
-    );
-    return {
-      content: [
-        { type: "text" as const, text: JSON.stringify(result, null, 2) },
-      ],
-    };
-  }
-);
-
-server.tool(
-  "warden.sandbox.audit",
-  "Query sandbox execution audit trail for a tenant — filter by risk score and action",
-  {
-    tenantId: z.string().describe("Tenant ID"),
-    minRiskScore: z.number().int().min(0).max(100).optional().describe("Minimum risk score filter"),
-    action: z.enum(["allow", "flag", "alert"]).optional().describe("Filter by risk action"),
-    limit: z.number().int().min(1).max(500).default(50).describe("Max results"),
-  },
-  async ({ tenantId, minRiskScore, action, limit }) => {
-    const results = await querySandboxAudit(
-      { tenantId, minRiskScore, action, limit },
-      config.AZURE_COSMOS_ENDPOINT,
-      config.AZURE_COSMOS_DATABASE
-    );
-    return {
-      content: [
-        { type: "text" as const, text: JSON.stringify(results, null, 2) },
       ],
     };
   }

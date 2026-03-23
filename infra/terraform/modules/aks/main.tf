@@ -6,18 +6,6 @@ variable "system_node_vm_size" { type = string }
 variable "tenant_node_vm_size" { type = string }
 variable "tenant_node_min_count" { type = number }
 variable "tenant_node_max_count" { type = number }
-variable "sandbox_node_vm_size" {
-  type    = string
-  default = "Standard_D4s_v5"
-}
-variable "sandbox_node_min_count" {
-  type    = number
-  default = 1
-}
-variable "sandbox_node_max_count" {
-  type    = number
-  default = 10
-}
 variable "vnet_subnet_id" { type = string }
 variable "agc_id" {
   type        = string
@@ -146,36 +134,6 @@ resource "azurerm_kubernetes_cluster_node_pool" "tenant" {
   tags = var.tags
 }
 
-# Sandbox node pool — Kata Containers (Hyper-V microVM isolation) for tool execution (§4.1.1)
-resource "azurerm_kubernetes_cluster_node_pool" "sandbox" {
-  name                  = "sandbox"
-  kubernetes_cluster_id = azurerm_kubernetes_cluster.this.id
-  vm_size               = var.sandbox_node_vm_size
-  vnet_subnet_id        = var.vnet_subnet_id
-  os_disk_type          = "Managed"
-  os_disk_size_gb       = 128
-  os_sku                = "AzureLinux"  # Required for Kata Containers
-  zones                 = ["1", "3"]
-  workload_runtime      = "KataMshvVmIsolation"
-
-  auto_scaling_enabled = true
-  min_count            = var.sandbox_node_min_count
-  max_count            = var.sandbox_node_max_count
-
-  node_labels = {
-    "openclaw.io/pool" = "sandbox"
-  }
-
-  node_taints = [
-    "openclaw.io/sandbox-only=true:NoSchedule"
-  ]
-
-  upgrade_settings {
-    max_surge = "33%"
-  }
-
-  tags = var.tags
-}
 
 # Grant AKS kubelet identity AcrPull on ACR
 resource "azurerm_role_assignment" "aks_acr_pull" {

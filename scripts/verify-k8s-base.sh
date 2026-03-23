@@ -237,16 +237,7 @@ else
   warn "Gateway agent-warden-gateway not found in agent-warden-system"
 fi
 
-# ── 12. RuntimeClass ─────────────────────────────────────
-check_header "RuntimeClass"
-if kubectl get runtimeclass kata-vm-isolation &>/dev/null; then
-  HANDLER=$(kubectl get runtimeclass kata-vm-isolation -o jsonpath='{.handler}')
-  pass "RuntimeClass kata-vm-isolation exists (handler: $HANDLER)"
-else
-  warn "RuntimeClass kata-vm-isolation not found (sandbox isolation may not work)"
-fi
-
-# ── 13. Operator Deployment ──────────────────────────────
+# ── 12. Operator Deployment ──────────────────────────────
 check_header "Operator Deployment"
 if kubectl get deployment agent-warden-operator -n agent-warden-system &>/dev/null; then
   READY=$(kubectl get deployment agent-warden-operator -n agent-warden-system -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")

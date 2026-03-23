@@ -32,7 +32,6 @@ Applied via `kubectl` and Helm:
 - **CRD**: `openclawtenant-crd.yaml`
 - **RBAC**: Operator service account + ClusterRole
 - **Gateway**: Gateway API resource in `agent-warden-system`
-- **RuntimeClass**: Kata containers for sandbox pool
 - **Operator**: Running in `agent-warden-system` namespace
 - **Shared LiteLLM Proxy**: 2-replica Deployment + Service + PDB in `agent-warden-system` (see `k8s/base/litellm/`)
 
@@ -43,7 +42,6 @@ Applied via `kubectl` and Helm:
 | `openclaw` | `2026.3.12` | Imported from `alpine/openclaw:2026.3.12` |
 | `agent-warden-saas-proxy` | `latest` | Built from `agent-warden-saas-proxy/` |
 | `purview-dlp-plugin` | `0.4.0` | Built from `agent-warden-purview-dlp/` |
-| `sandbox-monitor` | `latest` | Built from `sandbox-monitor/` |
 | `agent-warden-operator` | `latest` | Built from `k8s/operator/` |
 
 ### Demo Tenant

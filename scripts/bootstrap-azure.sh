@@ -189,8 +189,6 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/downloa
 kubectl apply -f "$REPO_ROOT/k8s/base/storage/"
 kubectl apply -f "$REPO_ROOT/k8s/base/rbac/"
 kubectl apply -f "$REPO_ROOT/k8s/operator/config/crd/"
-kubectl apply -f "$REPO_ROOT/k8s/base/sandbox/runtime-class.yaml"
-
 echo ""
 echo "  Verifying StorageClasses:"
 kubectl get storageclass | grep managed-
@@ -243,7 +241,6 @@ ACR_SHORT="${ACR_SERVER%%.*}"
 IMAGES=(
   "agent-warden-saas-proxy:agent-warden-saas-proxy"
   "agent-warden-operator:k8s/operator"
-  "sandbox-monitor:sandbox-monitor"
 )
 
 for IMG_ENTRY in "${IMAGES[@]}"; do

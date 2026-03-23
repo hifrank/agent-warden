@@ -16,7 +16,7 @@ Each tenant operates in a fully isolated environment with no shared state, secre
 | ResourceQuota + LimitRange | Per-tier CPU/memory/storage/pod limits enforced at namespace level | [resourcequota.yaml](../../k8s/helm/openclaw-tenant/templates/resourcequota.yaml) |
 | Dedicated Key Vault | Per-tenant Azure Key Vault (HSM Premium) — tenants cannot access other tenants' secrets | Terraform [keyvault](../../infra/terraform/modules/keyvault/main.tf) |
 | Per-tenant Managed Identity | Workload Identity with federated credentials scoped to tenant namespace and service account | Terraform [managed-identity](../../infra/terraform/modules/managed-identity/main.tf) |
-| Node pool separation | 3-pool architecture with taints: system (control plane), tenant (gateway pods), sandbox (Kata microVMs) | Terraform [aks](../../infra/terraform/modules/aks/main.tf) |
+| Node pool separation | 2-pool architecture with taints: system (control plane), tenant (gateway pods) | Terraform [aks](../../infra/terraform/modules/aks/main.tf) |
 
 ### Design doc reference: §4.1, §15.2
 
@@ -68,7 +68,6 @@ Zero-trust identity model with no static credentials in containers.
 | 3-tier envelope encryption | HSM Master Key → Per-Tenant KEK → Per-Secret DEK | Key Vault + Agent Warden Server |
 | Secrets Store CSI Driver | Secrets injected from Key Vault into pods via SecretProviderClass — auto-rotation every 5 minutes | [secretproviderclass.yaml](../../k8s/helm/openclaw-tenant/templates/secretproviderclass.yaml) |
 | Key rotation policies | API keys: 90-day auto-rotation; channel tokens: on-demand; KEKs: annual with dual-key window | Key Vault rotation policy |
-| No secrets in sandbox pods | Sandbox pods have zero Secret mounts, no SecretProviderClass, `automountServiceAccountToken: false` | [sandbox.yaml](../../k8s/helm/openclaw-tenant/templates/sandbox.yaml) |
 | Deny-default Key Vault network ACL | Key Vault network rule defaults to `Deny`; only VNet and private endpoints allowed | Terraform keyvault module |
 
 ### Design doc reference: §6
@@ -106,33 +105,13 @@ Zero-trust identity model with no static credentials in containers.
 
 ---
 
-## 6. Sandbox Security (Kata Containers)
-
-Tool execution runs inside hardware-isolated Hyper-V microVMs.
-
-| Technique | Description | Component |
-|-----------|-------------|-----------|
-| Kata Containers (`kata-vm-isolation`) | Each tool execution pod runs in a Hyper-V microVM — hardware boundary between untrusted code and host kernel | RuntimeClass, Terraform AKS sandbox pool |
-| Sandbox monitor (PID 1) | TypeScript process running as PID 1 inside the microVM; forks tool process and monitors its behavior | [monitor.ts](../../sandbox-monitor/src/monitor.ts) |
-| Suspicious binary detection | Flags execution of `curl`, `wget`, `nc`, `nmap`, `ssh`, `python`, `perl`, and shell interpreters | Sandbox monitor |
-| Suspicious file detection | Regex patterns for `.sh`, `.py`, `reverse.?shell`, `exploit`, `backdoor`, `payload`, `meterpreter` | Sandbox monitor |
-| Network connection monitoring | Parses `/proc/net/tcp` to detect outbound connections, DNS queries, byte counts | Sandbox monitor |
-| Risk scoring | Computed risk score with automated actions: `allow`, `flag`, or `alert` | Sandbox monitor |
-| Pod hardening | `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`, seccomp `RuntimeDefault` | [sandbox.yaml](../../k8s/helm/openclaw-tenant/templates/sandbox.yaml) |
-| Ephemeral isolation | tmpfs-only volumes (`emptyDir` with `medium: Memory`), no PVCs, `activeDeadlineSeconds` timeout | Sandbox pod spec |
-| Forced sandbox mode | All sessions run sandboxed (`sandbox.mode: "always"`) enforced by policy engine | Agent Warden Server |
-
-### Design doc reference: §4.1.1
-
----
-
-## 7. Audit & Observability
+## 6. Audit & Observability
 
 Comprehensive audit trail with tamper-proof storage and SIEM integration.
 
 | Technique | Description | Component |
 |-----------|-------------|-----------|
-| Structured audit events | 11+ event types: `tenant.created`, `secret.accessed`, `sandbox.exec`, `auth.failed`, `config.changed`, etc. | Agent Warden Server |
+| Structured audit events | 11+ event types: `tenant.created`, `secret.accessed`, `tool.exec`, `auth.failed`, `config.changed`, etc. | Agent Warden Server |
 | Cosmos DB audit log | All operations logged with 90-day TTL | [cosmos.ts](../../agent-warden-server/src/middleware/cosmos.ts) |
 | Log Analytics workspace | Centralized logging with per-tenant RBAC (tenants see only their own logs) | Terraform [log-analytics](../../infra/terraform/modules/log-analytics/main.tf) |
 | Microsoft Sentinel SIEM | Ingests from Defender, Purview DLP, Entra ID, Key Vault for unified threat detection and correlation | Sentinel workspace |
@@ -145,7 +124,7 @@ Comprehensive audit trail with tamper-proof storage and SIEM integration.
 
 ---
 
-## 8. Data Governance
+## 7. Data Governance
 
 4-layer data governance framework for SaaS API interactions.
 
@@ -163,7 +142,7 @@ Comprehensive audit trail with tamper-proof storage and SIEM integration.
 
 ---
 
-## 9. Resource Governance (DoS Protection)
+## 8. Resource Governance (DoS Protection)
 
 Per-tier limits prevent resource exhaustion and noisy-neighbor effects.
 
@@ -173,13 +152,12 @@ Per-tier limits prevent resource exhaustion and noisy-neighbor effects.
 | LimitRange defaults | Container default/max CPU + memory with per-tier scaling | ResourceQuota template |
 | Rate limiting | Per-tenant (100 req/min), per-IP (50 req/min), global circuit breaker at 80% platform capacity | Ingress + Agent Warden Server |
 | Noisy neighbor protection | CPU hard limits (cgroups), I/O bandwidth limits, network bandwidth limits (tc/eBPF), OOM killer integration | K8s resource limits |
-| Sandbox timeout | `activeDeadlineSeconds` per sandbox pod, configurable per tier | Sandbox pod spec |
 
 ### Design doc reference: §8
 
 ---
 
-## 10. Supply Chain Security
+## 9. Supply Chain Security
 
 Managed skill installation with trust verification.
 
@@ -196,7 +174,7 @@ Managed skill installation with trust verification.
 
 ---
 
-## 11. Runtime Security (Microsoft Defender)
+## 10. Runtime Security (Microsoft Defender)
 
 Real-time container and cluster security monitoring.
 
@@ -211,7 +189,7 @@ Real-time container and cluster security monitoring.
 
 ---
 
-## 12. Compliance & Disaster Recovery
+## 11. Compliance & Disaster Recovery
 
 Regulatory compliance controls and data protection.
 
@@ -219,7 +197,7 @@ Regulatory compliance controls and data protection.
 |-----------|-------------|-----------|
 | GDPR right to erasure | Crypto-shred via KEK deletion — all data encrypted under the tenant KEK becomes unrecoverable | Key Vault + delete-tenant.sh |
 | SOC 2 Type II | Audit logging + access controls + encryption at rest/transit verified via Defender for Cloud compliance dashboard | Azure platform |
-| HIPAA | Kata VM-based isolation, BAA support, encrypted PHI, sensitivity labels for PHI data | Azure + Purview labels |
+| HIPAA | BAA support, encrypted PHI, sensitivity labels for PHI data | Azure + Purview labels |
 | Data residency pinning | Per-tenant Azure region pinning via Azure Policy (allowed locations) | Azure Policy |
 | Backup strategy | PVC snapshots every 6h (30-day GRS), session transcripts to Blob WORM (1yr), secrets in soft-delete Key Vault | Azure Backup + Blob |
 | Azure Policy + OPA Gatekeeper | Pod security standards enforcement, allowed registries, required labels, network constraints | AKS addon |
