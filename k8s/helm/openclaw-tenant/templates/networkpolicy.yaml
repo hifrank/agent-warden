@@ -79,3 +79,16 @@ spec:
           protocol: TCP
         - port: 4318
           protocol: TCP
+    # Shared LiteLLM Proxy in agent-warden-system namespace
+    {{- if and .Values.litellmProxy.enabled .Values.litellmProxy.shared }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-warden-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm-proxy
+      ports:
+        - port: 4000
+          protocol: TCP
+    {{- end }}

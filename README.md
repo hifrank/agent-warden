@@ -12,7 +12,7 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 | **K8s Operator** | Watches `OpenClawTenant` CRD and reconciles tenant namespaces, StatefulSets, and NetworkPolicies |
 | **Purview DLP Plugin** | OpenClaw plugin with 4-layer defense (L1 prompt guard, L2 output scanner, L2b response scanner, L3 input audit) via Microsoft Purview processContent API |
 | **SaaS Auth Proxy** | Per-tenant sidecar proxy that injects OAuth tokens for external SaaS APIs (Google, GitHub, Salesforce) — agents never see raw credentials |
-| **LiteLLM Proxy** | Per-tenant sidecar routing LLM requests with per-model configuration and Azure OpenAI support |
+| **LiteLLM Proxy** | Shared Deployment in `agent-warden-system` routing LLM requests via Workload Identity to Azure OpenAI; replaces per-tenant sidecar |
 | **Sandbox Monitor** | PID 1 process inside Kata microVM that monitors tool execution for suspicious binaries, files, and network connections |
 | **Helm Chart** | Per-tenant chart deploying StatefulSet, NetworkPolicy, ResourceQuota, SecretProviderClass, ServiceAccount, and HTTPRoute |
 
@@ -39,7 +39,6 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 │  │  │ ┌──────────────┐ │  │ ┌──────────────┐ │  │ ┌────────────┐ │  │       │
 │  │  │ │OpenClaw :1878│ │  │ │OpenClaw :1878│ │  │ │OpenClaw    │ │  │       │
 │  │  │ │DLP Plugin    │ │  │ │DLP Plugin    │ │  │ │DLP Plugin  │ │  │       │
-│  │  │ │LiteLLM :8080 │ │  │ │LiteLLM :8080 │ │  │ │LiteLLM    │ │  │       │
 │  │  │ │SaaS Prxy:9090│ │  │ │SaaS Prxy:9090│ │  │ │SaaS Proxy  │ │  │       │
 │  │  │ └──────────────┘ │  │ └──────────────┘ │  │ └────────────┘ │  │       │
 │  │  │  NetworkPolicy   │  │  NetworkPolicy   │  │  NetworkPolicy │  │       │
@@ -52,10 +51,12 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 │  └───────────────────────────────────────────────────────────────────┘       │
 │                                                                              │
 │  agent-warden-system namespace                                               │
-│  ┌─────────────────┐  ┌────────────────┐                                    │
-│  │ Agent Warden    │  │ K8s Operator   │                                    │
-│  │ Server (MCP)    │  │ (Reconciler)   │                                    │
-│  └─────────────────┘  └────────────────┘                                    │
+│  ┌─────────────────┐  ┌────────────────┐  ┌──────────────────┐              │
+│  │ Agent Warden    │  │ K8s Operator   │  │ LiteLLM Proxy    │              │
+│  │ Server (MCP)    │  │ (Reconciler)   │  │ :4000 (2 replicas│              │
+│  └─────────────────┘  └────────────────┘  │ Workload Identity│              │
+│                                            │ → Azure OpenAI)  │              │
+│                                            └──────────────────┘              │
 └──────────┬──────────────┬──────────────┬──────────────┬──────────────────────┘
            │              │              │              │
    ┌───────▼──────┐ ┌────▼─────────┐ ┌──▼───────────┐ │ ┌──────────────────┐
@@ -79,7 +80,7 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 | Pool | Runtime | Purpose | Isolation |
 |------|---------|---------|-----------|
 | **System** | runc | Control plane (operator, Agent Warden Server) | System taint |
-| **Tenant** | runc | Gateway pods (OpenClaw + sidecars per tenant) | Namespace + NetworkPolicy + ResourceQuota |
+| **Tenant** | runc | Gateway pods (OpenClaw + SaaS proxy per tenant; LiteLLM shared) | Namespace + NetworkPolicy + ResourceQuota |
 | **Sandbox** | Kata (Hyper-V microVM) | Ephemeral tool execution | Hardware VM boundary, no secrets, `automountServiceAccountToken: false` |
 
 ### DLP Defense-in-Depth (v0.4.0)
@@ -277,7 +278,7 @@ agent-warden/
 │   └── src/
 │       ├── index.ts            #   Plugin entry: L1/L2/L2b/L3 DLP hooks
 │       └── purview-client.ts   #   Graph API processContent client (cross-tenant)
-├── agent-warden-llm-proxy/     # LiteLLM sidecar proxy
+├── agent-warden-llm-proxy/     # LiteLLM (legacy sidecar; now shared Deployment)
 ├── agent-warden-saas-proxy/    # SaaS Auth Proxy sidecar (OAuth2 token injection)
 ├── sandbox-monitor/            # Sandbox PID 1 monitor (process/file/network)
 ├── scripts/                    # Automation scripts

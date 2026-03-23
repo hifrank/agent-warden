@@ -1,0 +1,28 @@
+# Shared LiteLLM config — serves all tenants via a single model catalog.
+# Per-tenant isolation is handled by virtual keys (provisioned by Agent Warden Server).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-proxy-config
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: litellm-proxy
+    app.kubernetes.io/part-of: agent-warden
+data:
+  config.yaml: |
+    model_list:
+      - model_name: gpt-5.4
+        litellm_params:
+          model: azure/gpt-54
+          api_base: https://aoai-agentwarden-dev.openai.azure.com/
+          api_version: "2024-10-21"
+          base_model: "gpt-5.4"
+
+    litellm_settings:
+      drop_params: true
+      telemetry: false
+      enable_azure_ad_token_refresh: true
+      callbacks: ["custom_callback.data_llm_callback"]
+
+    general_settings:
+      allow_user_auth: true

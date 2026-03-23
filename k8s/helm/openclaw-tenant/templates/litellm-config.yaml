@@ -1,4 +1,4 @@
-{{- if .Values.litellmProxy.enabled }}
+{{- if and .Values.litellmProxy.enabled (not .Values.litellmProxy.shared) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

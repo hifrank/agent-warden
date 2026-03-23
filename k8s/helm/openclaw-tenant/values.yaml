@@ -107,11 +107,14 @@ memoryIndexRebuild:
 # -- Ephemeral volume size limit
 ephemeralSizeLimit: "2Gi"
 
-# -- LiteLLM Proxy sidecar (Azure OpenAI adapter)
-# Translates OpenAI-compatible requests to Azure OpenAI format.
-# Handles MI auth via workload identity and drops unsupported params.
+# -- LiteLLM Proxy configuration
+# Two modes:
+#   shared: true  → uses shared LiteLLM Deployment in agent-warden-system (no sidecar)
+#   shared: false → per-tenant sidecar (legacy, higher resource usage)
 litellmProxy:
   enabled: true
+  shared: false                    # Set true to use shared LiteLLM service
+  sharedEndpoint: "http://litellm-proxy.agent-warden-system.svc.cluster.local:4000/v1"
   port: 4000
   masterKey: "CHANGE-ME"          # Override per-tenant; never commit real keys
   logLevel: "WARNING"

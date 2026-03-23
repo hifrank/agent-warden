@@ -1,14 +1,17 @@
-{{- if and .Values.litellmProxy.enabled (not .Values.litellmProxy.shared) }}
+# Shared LiteLLM callback — emits data.llm events to stdout + Cosmos DB.
+# Tenant ID is extracted from LiteLLM request metadata (user field or headers).
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: litellm-callback-{{ .Values.tenantId }}
-  namespace: tenant-{{ .Values.tenantId }}
+  name: litellm-proxy-callback
+  namespace: agent-warden-system
   labels:
-    {{- include "openclaw-tenant.labels" . | nindent 4 }}
+    app.kubernetes.io/name: litellm-proxy
+    app.kubernetes.io/part-of: agent-warden
 data:
   custom_callback.py: |
-    """LiteLLM custom callback – emits structured data.llm events to stdout + Cosmos DB."""
+    """LiteLLM custom callback — emits structured data.llm events to stdout + Cosmos DB.
+    In shared mode, tenant_id is extracted from request metadata."""
     import json
     import sys
     import os
@@ -88,14 +91,22 @@ data:
     # ── Callback class ──
 
     class DataLLMCallback(CustomLogger):
-        def __init__(self):
-            self.tenant_id = os.environ.get("TENANT_ID", "")
+        def _extract_tenant_id(self, kwargs):
+            """Extract tenant_id from LiteLLM metadata (set by OpenClaw via user field)."""
+            metadata = kwargs.get("metadata", {}) or {}
+            return (
+                metadata.get("tenant_id")
+                or metadata.get("user")
+                or kwargs.get("user", "")
+                or "unknown"
+            )
 
         def _emit(self, kwargs, response_obj, start_time, end_time):
             try:
                 usage = getattr(response_obj, "usage", None)
                 model = kwargs.get("model", "unknown")
                 litellm_params = kwargs.get("litellm_params", {})
+                tenant_id = self._extract_tenant_id(kwargs)
 
                 metadata = kwargs.get("metadata", {}) or {}
                 trace_id = (
@@ -112,7 +123,7 @@ data:
                     "id": str(uuid.uuid4()),
                     "type": "data.llm",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "tenantId": self.tenant_id,
+                    "tenantId": tenant_id,
                     "traceId": trace_id,
                     "model": model,
                     "provider": litellm_params.get("custom_llm_provider", "azure-openai"),
@@ -138,4 +149,3 @@ data:
             self._emit(kwargs, response_obj, start_time, end_time)
 
     data_llm_callback = DataLLMCallback()
-{{- end }}

@@ -1,0 +1,141 @@
+# Shared LiteLLM Proxy — multi-tenant LLM gateway in agent-warden-system
+# Replaces per-tenant LiteLLM sidecars. Uses platform Managed Identity
+# for Azure OpenAI auth. Per-tenant isolation via virtual keys.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm-proxy
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: litellm-proxy
+    app.kubernetes.io/part-of: agent-warden
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: litellm-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: litellm-proxy
+        app.kubernetes.io/part-of: agent-warden
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: litellm-proxy
+      nodeSelector:
+        openclaw.io/pool: system
+      containers:
+        - name: litellm
+          image: litellm/litellm:v1.82.0-stable
+          args:
+            - --config
+            - /etc/litellm/config.yaml
+            - --port
+            - "4000"
+            - --num_workers
+            - "2"
+          env:
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-proxy-secret
+                  key: master-key
+            - name: LITELLM_LOG
+              value: "WARNING"
+            - name: PYTHONPATH
+              value: /etc/litellm
+            - name: COSMOS_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-proxy-secret
+                  key: cosmos-endpoint
+                  optional: true
+            - name: COSMOS_DATABASE
+              value: "agent-warden"
+          ports:
+            - name: http
+              containerPort: 4000
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: litellm-config
+              mountPath: /etc/litellm
+              readOnly: true
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: litellm-config
+          projected:
+            sources:
+              - configMap:
+                  name: litellm-proxy-config
+              - configMap:
+                  name: litellm-proxy-callback
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm-proxy
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: litellm-proxy
+    app.kubernetes.io/part-of: agent-warden
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: litellm-proxy
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: litellm-proxy
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: litellm-proxy
+    app.kubernetes.io/part-of: agent-warden
+  annotations:
+    # Platform MI — needs "Cognitive Services OpenAI User" on aoai resource
+    azure.workload.identity/client-id: "dea0aebd-5099-4ebb-a3ce-a67f2823e40d"
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: litellm-proxy
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: litellm-proxy
+    app.kubernetes.io/part-of: agent-warden
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: litellm-proxy

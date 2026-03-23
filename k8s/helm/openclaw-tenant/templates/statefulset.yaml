@@ -383,7 +383,8 @@ spec:
                   - "kill -SIGTERM 1 && sleep 25"
 
         # ── LiteLLM Proxy sidecar — Azure OpenAI adapter ──
-        {{- if .Values.litellmProxy.enabled }}
+        # Skipped when litellmProxy.shared=true (uses shared Deployment in agent-warden-system)
+        {{- if and .Values.litellmProxy.enabled (not .Values.litellmProxy.shared) }}
         - name: litellm-proxy
           image: {{ .Values.litellmProxy.image.repository }}:{{ .Values.litellmProxy.image.tag }}
           imagePullPolicy: {{ .Values.litellmProxy.image.pullPolicy }}
@@ -600,7 +601,7 @@ spec:
             sizeLimit: "1Gi"
         {{- end }}
 
-        {{- if .Values.litellmProxy.enabled }}
+        {{- if and .Values.litellmProxy.enabled (not .Values.litellmProxy.shared) }}
         - name: litellm-config
           projected:
             sources:

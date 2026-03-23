@@ -11,7 +11,7 @@ All infrastructure deployed via 7 Terraform apply iterations:
 | Resource | Name | Details |
 |----------|------|---------|
 | Resource Group | `rg-agentwarden-dev` | East US 2 |
-| AKS | `aks-agentwarden-dev` | K8s 1.32.11, public cluster (IP whitelist: `118.160.24.57/32`), 6 nodes (Standard_D4s_v5), zones [1,3] |
+| AKS | `aks-agentwarden-dev` | K8s 1.32.11, public cluster (IP whitelist — use `az aks update` to add current IP), 6 nodes (Standard_D4s_v5), zones [1,3] |
 | ACR | `acragentwardendev` | Premium, admin disabled |
 | Azure OpenAI | `aoai-agentwarden-dev` | gpt-4o (2024-11-20), GlobalStandard 10K TPM |
 | Cosmos DB | `cosmos-agentwarden-dev` | Serverless, containers: tenants, instances, skills, audit |
@@ -34,6 +34,7 @@ Applied via `kubectl` and Helm:
 - **Gateway**: Gateway API resource in `agent-warden-system`
 - **RuntimeClass**: Kata containers for sandbox pool
 - **Operator**: Running in `agent-warden-system` namespace
+- **Shared LiteLLM Proxy**: 2-replica Deployment + Service + PDB in `agent-warden-system` (see `k8s/base/litellm/`)
 
 ### Container Images in ACR (`acragentwardendev.azurecr.io`)
 
@@ -41,21 +42,25 @@ Applied via `kubectl` and Helm:
 |-------|-----|--------|
 | `openclaw` | `2026.3.12` | Imported from `alpine/openclaw:2026.3.12` |
 | `agent-warden-saas-proxy` | `latest` | Built from `agent-warden-saas-proxy/` |
-| `purview-dlp-plugin` | `0.3.0` | Built from `agent-warden-purview-dlp/` |
+| `purview-dlp-plugin` | `0.4.0` | Built from `agent-warden-purview-dlp/` |
 | `sandbox-monitor` | `latest` | Built from `sandbox-monitor/` |
 | `agent-warden-operator` | `latest` | Built from `k8s/operator/` |
 
 ### Demo Tenant
 
 - **Namespace**: `tenant-demo-tenant`
-- **Helm Chart**: `openclaw-tenant` (revision ~8)
+- **Helm Chart**: `openclaw-tenant` (revision 101)
 - **Pod**: `openclaw-demo-tenant-0` — StatefulSet, 3/3 containers Running
   - `openclaw-gateway` — OpenClaw 2026.3.12
-  - `litellm-proxy` — LiteLLM Azure OpenAI adapter
   - `saas-auth-proxy` — SaaS OAuth proxy
+  - `heartbeat` — Gateway health monitoring
+- **LiteLLM**: Shared Deployment in `agent-warden-system` (not per-tenant sidecar)
+  - Set `litellmProxy.shared: true` in values file
+  - Tenant NetworkPolicy allows egress to `litellm-proxy.agent-warden-system:4000`
 - **Workload Identity**: Federated credential on `mi-demo-tenant`
-- **Key Vault**: `kv-demo-tenant` with `azure-openai-api-key` secret
-- **RBAC**: MI has `Cognitive Services OpenAI User` on the AOAI resource
+- **Key Vault**: `kv-demo-tenant` with tenant secrets
+- **Platform MI RBAC**: `Cognitive Services OpenAI User` on AOAI resource
+- **Channels**: Telegram (@hifrankBot) — config stored in `openclaw.json` runtime state
 
 ### OpenClaw Configuration (`/data/state/openclaw.json`)
 
@@ -63,18 +68,20 @@ Applied via `kubectl` and Helm:
 {
   "agents": {
     "defaults": {
-      "model": "openai/gpt-4o"
+      "model": "litellm/gpt-5.4"
     }
   },
   "models": {
+    "mode": "merge",
     "providers": {
-      "openai": {
-        "baseUrl": "http://127.0.0.1:8080/aoai-agentwarden-dev.openai.azure.com/openai/deployments/gpt-4o",
+      "litellm": {
+        "baseUrl": "http://litellm-proxy.agent-warden-system.svc.cluster.local:4000/v1",
+        "apiKey": "<master-key>",
         "api": "openai-completions",
         "models": [
           {
-            "id": "gpt-4o",
-            "name": "GPT-4o (Azure)",
+            "id": "gpt-5.4",
+            "name": "gpt-5.4 (Azure)",
             "reasoning": false,
             "input": ["text", "image"],
             "contextWindow": 128000,
@@ -85,7 +92,6 @@ Applied via `kubectl` and Helm:
     }
   },
   "gateway": {
-    "mode": "local",
     "auth": {
       "mode": "token",
       "token": "<gateway-token>"
@@ -93,6 +99,8 @@ Applied via `kubectl` and Helm:
   }
 }
 ```
+
+> **Important**: `openclaw.json` contains runtime state including channel configs (Telegram, Discord, etc.) that are NOT managed by Helm. Back up the file before deleting or re-seeding.
 
 Key docs reference: https://docs.openclaw.ai/gateway/configuration-reference (`agents.defaults.model`, `models.providers`)
 
@@ -107,41 +115,22 @@ Key docs reference: https://docs.openclaw.ai/gateway/configuration-reference (`a
 - [x] K8s base resources (StorageClasses, CRD, RBAC, Gateway, RuntimeClass)
 - [x] Operator deployed and running
 - [x] 5 container images built and pushed to ACR
-- [x] Demo tenant provisioned (namespace, KV, MI, Workload Identity, Helm)
+- [x] Demo tenant provisioned (namespace, KV, MI, Workload Identity, Helm rev 101)
 - [x] OpenClaw 2026.3.12 running as gateway (3/3 pods Ready)
-- [x] OpenClaw configured to use `openai/gpt-4o` as default model (via `agents.defaults.model`)
-- [x] OpenClaw provider config routes to Azure OpenAI via LiteLLM proxy (via `models.providers.openai.baseUrl`)
-- [x] LiteLLM proxy handles Azure OpenAI translation + Managed Identity token refresh
-- [x] MI has `Cognitive Services OpenAI User` RBAC on AOAI resource
+- [x] Shared LiteLLM Proxy (2 replicas) in `agent-warden-system` with Workload Identity
+- [x] OpenClaw routes to shared LiteLLM via cross-namespace endpoint (`litellm/gpt-5.4`)
+- [x] Platform MI has `Cognitive Services OpenAI User` RBAC on AOAI resource
+- [x] Azure OpenAI MI auth working (subscription enforces `disableLocalAuth=true`)
+- [x] End-to-end LLM calls working via shared LiteLLM + Workload Identity
 - [x] Liveness/readiness probes working (exec-based `wget` to loopback)
 - [x] Config hot-reload: `openclaw.json` changes auto-apply for agent/model changes
+- [x] Telegram channel connected (@hifrankBot, long-polling)
+- [x] OTel observability (Collector DaemonSet → App Insights, agents-view plugin)
 
-### Blocked
+### Not Yet Deployed
 
-- [ ] **End-to-end LLM call fails** — see "Blocking Issue" below
 - [ ] `agent-warden-server` not yet deployed (MCP control plane)
 - [ ] Gateway API not yet exposing tenant externally (no TLS, no DNS, ADDRESS=Unknown)
-- [ ] `openclaw.json` config is ephemeral (manually written to PVC, not Helm-managed)
-
-### Blocking Issue: Azure OpenAI Authentication
-
-**Problem**: The subscription enforces `disableLocalAuth=true` on the Azure OpenAI resource (cannot be changed — tried `az resource update`, REST API PATCH, `az cognitiveservices account update`; the setting reverts to `true`). This means API key authentication is rejected with `403 Key based authentication is disabled`.
-
-**Current architecture**:
-```
-OpenClaw Gateway  →  DLP Proxy (:8080)  →  Azure OpenAI (HTTPS)
-                     (MI bearer token)
-```
-
-The DLP proxy has been updated to acquire a bearer token via `DefaultAzureCredential` (Managed Identity) and inject it as `Authorization: Bearer <token>` for Azure OpenAI requests. However, OpenClaw's embedded agent CLI mode bypasses the gateway and calls the provider directly using the API key from `OPENAI_API_KEY` env var — it does NOT go through the DLP proxy.
-
-**Solution options for tomorrow**:
-
-1. **Ensure gateway mode (not embedded CLI)** — The agent calls via the running gateway process (which reads `models.providers.openai.baseUrl` and routes through the proxy). Test via Control UI or channel rather than `openclaw agent` CLI.
-
-2. **Set `OPENAI_BASE_URL` in OpenClaw env** — OpenClaw should respect `OPENAI_BASE_URL` for the OpenAI provider. The env var is already set to `http://127.0.0.1:8080/aoai-agentwarden-dev.openai.azure.com/openai/deployments/gpt-4o`. The gateway process should use it.
-
-3. **Remove `OPENAI_API_KEY` env var** — Since the DLP proxy handles auth via MI, OpenClaw doesn't need the API key. But OpenClaw may refuse to start without a key for the configured provider. Test with a dummy value.
 
 ---
 
@@ -167,17 +156,16 @@ kubectl get nodes
 ```
 
 ### IP Whitelist
-Your public IP must be in the authorized IP ranges. Current whitelist: `118.160.24.57/32`.
+Your public IP must be in the authorized IP ranges. IP changes frequently — update as needed.
 
 To add a new IP:
 ```bash
-# Update Terraform variable
-# In infra/terraform/environments/dev/terraform.tfvars:
-#   aks_authorized_ip_ranges = ["118.160.24.57/32", "<new-ip>/32"]
+# Get your current public IP
+MY_IP=$(curl -s ifconfig.me)
 
-# Or directly via Azure CLI (non-persistent):
+# Update via Azure CLI (non-persistent across Terraform applies):
 az aks update -g rg-agentwarden-dev -n aks-agentwarden-dev \
-  --api-server-authorized-ip-ranges "118.160.24.57/32,<new-ip>/32"
+  --api-server-authorized-ip-ranges "$MY_IP/32"
 ```
 
 > **Note**: If you see a device code login prompt (`https://login.microsoft.com/device`),
@@ -199,9 +187,43 @@ kubectl rollout restart statefulset/openclaw-demo-tenant -n tenant-demo-tenant
 # Deploy directly via Helm
 helm upgrade --install demo-tenant k8s/helm/openclaw-tenant \
   -f k8s/helm/openclaw-tenant/values-demo-tenant.yaml \
+  --set litellmProxy.masterKey="<real-key>" \
   --namespace tenant-demo-tenant \
   --create-namespace
 ```
+
+## Shared LiteLLM Proxy
+
+The shared LiteLLM Proxy runs in `agent-warden-system` and serves all tenants, replacing per-tenant sidecars.
+
+### Pre-requisites
+
+1. **K8s Secret** — Create `litellm-proxy-secret` in `agent-warden-system` with `master-key` and `cosmos-endpoint`
+2. **Federated Credential** — Create `fed-litellm-proxy` on the platform MI for Workload Identity
+3. **RBAC** — Platform MI needs `Cognitive Services OpenAI User` on the AOAI resource
+
+### Deploy
+
+```bash
+kubectl apply -f k8s/base/litellm/
+```
+
+### Toggle shared mode for a tenant
+
+In the tenant values file:
+```yaml
+litellmProxy:
+  enabled: true
+  shared: true
+  sharedEndpoint: "http://litellm-proxy.agent-warden-system.svc.cluster.local:4000/v1"
+  masterKey: "CHANGE-ME"  # Override via --set
+```
+
+When `shared: true`:
+- The LiteLLM sidecar container is **not** injected into the tenant pod
+- The per-tenant `litellm-config` and `litellm-callback` ConfigMaps are **not** created
+- A NetworkPolicy egress rule allows traffic to `litellm-proxy:4000` in `agent-warden-system`
+- OpenClaw's `baseUrl` points to the shared endpoint instead of `localhost`
 
 ## Key Learnings
 
@@ -217,6 +239,11 @@ helm upgrade --install demo-tenant k8s/helm/openclaw-tenant \
 10. **OIDC issuer changes**: When AKS is recreated, the OIDC issuer URL changes. All federated identity credentials must be updated to match the new URL.
 11. **Storage account access**: Subscription policies may disable public network access on storage accounts. Bootstrap script checks and re-enables for Terraform state.
 12. **Key Vault network access**: When using a public AKS cluster, per-tenant Key Vaults need public network access enabled for the CSI driver to reach them.
+13. **Shared LiteLLM**: Set `litellmProxy.shared: true` to use the shared Deployment instead of per-tenant sidecar. The master key must match the K8s secret `litellm-proxy-secret` in `agent-warden-system`.
+14. **LiteLLM image**: Requires `runAsUser: 1000` for `runAsNonRoot` — the default image runs as root.
+15. **Model name matching**: `model_name` in LiteLLM config must match what OpenClaw sends (i.e. `baseModel`), not the Azure deployment name.
+16. **Telegram channel config**: Stored in `openclaw.json` as `channels.telegram.accounts.default.botToken` — this is runtime state NOT managed by Helm. Back up before re-seeding.
+17. **stream_options**: Do NOT set `stream_options.include_usage: true` in LiteLLM model params — causes 400 on non-streaming requests.
 
 ## Manual Steps (Cannot Be Automated)
 

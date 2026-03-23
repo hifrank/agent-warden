@@ -18,7 +18,11 @@ data:
         "providers": {
           {{- if .Values.litellmProxy.enabled }}
           "litellm": {
+            {{- if .Values.litellmProxy.shared }}
+            "baseUrl": {{ .Values.litellmProxy.sharedEndpoint | quote }},
+            {{- else }}
             "baseUrl": "http://localhost:{{ .Values.litellmProxy.port }}/v1",
+            {{- end }}
             "apiKey": "LITELLM_MASTER_KEY_PLACEHOLDER",
             "api": "openai-completions",
             "models": [

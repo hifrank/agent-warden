@@ -26,7 +26,9 @@ memoryIndexRebuild:
 
 litellmProxy:
   enabled: true
-  masterKey: "CHANGE-ME"
+  shared: true                    # Use shared LiteLLM Deployment in agent-warden-system
+  sharedEndpoint: "http://litellm-proxy.agent-warden-system.svc.cluster.local:4000/v1"
+  masterKey: "CHANGE-ME"   # Set via --set litellmProxy.masterKey=... or sealed secret
   logLevel: "INFO"     # DEBUG for troubleshooting
   image:
     repository: litellm/litellm
