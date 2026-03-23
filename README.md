@@ -13,6 +13,9 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 | **Purview DLP Plugin** | OpenClaw plugin with 4-layer defense (L1 prompt guard, L2 output scanner, L2b response scanner, L3 input audit) via Microsoft Purview processContent API |
 | **SaaS Auth Proxy** | Per-tenant sidecar proxy that injects OAuth tokens for external SaaS APIs (Google, GitHub, Salesforce) — agents never see raw credentials |
 | **LiteLLM Proxy** | Shared Deployment in `agent-warden-system` routing LLM requests via Workload Identity to Azure OpenAI; replaces per-tenant sidecar |
+| **Agents View Plugin** | OpenClaw plugin emitting GenAI OTel spans (model, tokens, latency) via HTTP OTLP to the OTel Collector |
+| **OTel Collector** | DaemonSet in `agent-warden-system` receiving traces/metrics and exporting to Application Insights via Azure Monitor exporter |
+| **Heartbeat Sidecar** | Per-tenant sidecar probing gateway health and emitting OTel metrics |
 | **Sandbox Monitor** | PID 1 process inside Kata microVM that monitors tool execution for suspicious binaries, files, and network connections |
 | **Helm Chart** | Per-tenant chart deploying StatefulSet, NetworkPolicy, ResourceQuota, SecretProviderClass, ServiceAccount, and HTTPRoute |
 
@@ -39,7 +42,9 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 │  │  │ ┌──────────────┐ │  │ ┌──────────────┐ │  │ ┌────────────┐ │  │       │
 │  │  │ │OpenClaw :1878│ │  │ │OpenClaw :1878│ │  │ │OpenClaw    │ │  │       │
 │  │  │ │DLP Plugin    │ │  │ │DLP Plugin    │ │  │ │DLP Plugin  │ │  │       │
+│  │  │ │Agents View   │ │  │ │Agents View   │ │  │ │Agents View │ │  │       │
 │  │  │ │SaaS Prxy:9090│ │  │ │SaaS Prxy:9090│ │  │ │SaaS Proxy  │ │  │       │
+│  │  │ │Heartbeat     │ │  │ │Heartbeat     │ │  │ │Heartbeat   │ │  │       │
 │  │  │ └──────────────┘ │  │ └──────────────┘ │  │ └────────────┘ │  │       │
 │  │  │  NetworkPolicy   │  │  NetworkPolicy   │  │  NetworkPolicy │  │       │
 │  │  │  ResourceQuota   │  │  ResourceQuota   │  │  ResourceQuota │  │       │
@@ -56,22 +61,25 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 │  │ Server (MCP)    │  │ (Reconciler)   │  │ :4000 (2 replicas│              │
 │  └─────────────────┘  └────────────────┘  │ Workload Identity│              │
 │                                            │ → Azure OpenAI)  │              │
-│                                            └──────────────────┘              │
-└──────────┬──────────────┬──────────────┬──────────────┬──────────────────────┘
-           │              │              │              │
-   ┌───────▼──────┐ ┌────▼─────────┐ ┌──▼───────────┐ │ ┌──────────────────┐
-   │ Azure Key   │ │ Cosmos DB    │ │Log Analytics │ │ │Microsoft Purview │
-   │ Vault (HSM) │ │ (Serverless) │ │+ Sentinel    │ │ │(E5 DLP Policies) │
-   │ per-tenant  │ │ tenant reg.  │ │SIEM          │ │ │processContent API│
-   │ + platform  │ │ audit log    │ │              │ │ │cross-tenant auth │
+│  ┌──────────────────────────────┐          └──────────────────┘              │
+│  │ OTel Collector (DaemonSet)  │                                            │
+│  │ gRPC:4317  HTTP:4318        │──── Azure Monitor exporter ────┐           │
+│  └──────────────────────────────┘                                │           │
+└──────────┬──────────────┬──────────────┬──────────────┬──────────┼───────────┘
+           │              │              │              │          │
+   ┌───────▼──────┐ ┌────▼─────────┐ ┌──▼───────────┐ │ ┌────────▼─────────┐
+   │ Azure Key   │ │ Cosmos DB    │ │Log Analytics │ │ │ Application      │
+   │ Vault (HSM) │ │ (Serverless) │ │+ Sentinel    │ │ │ Insights         │
+   │ per-tenant  │ │ tenant reg.  │ │SIEM          │ │ │ (GenAI spans,    │
+   │ + platform  │ │ audit log    │ │              │ │ │  metrics, traces)│
    └─────────────┘ └──────────────┘ └──────────────┘ │ └──────────────────┘
                                                       │
-                                                ┌─────▼──────────┐
-                                                │ SaaS Providers │
-                                                │ Google / GitHub│
-                                                │ Salesforce     │
-                                                └────────────────┘
-                                             SaaS Auth Proxy :9090
+                                                ┌─────▼──────────┐     ┌──────────────────┐
+                                                │ SaaS Providers │     │Microsoft Purview │
+                                                │ Google / GitHub│     │(E5 DLP Policies) │
+                                                │ Salesforce     │     │processContent API│
+                                                └────────────────┘     │cross-tenant auth │
+                                             SaaS Auth Proxy :9090     └──────────────────┘
                                              OAuth2 delegated access
 ```
 
@@ -79,7 +87,7 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 
 | Pool | Runtime | Purpose | Isolation |
 |------|---------|---------|-----------|
-| **System** | runc | Control plane (operator, Agent Warden Server) | System taint |
+| **System** | runc | Control plane (operator, Agent Warden Server, OTel Collector, shared LiteLLM) | System taint |
 | **Tenant** | runc | Gateway pods (OpenClaw + SaaS proxy per tenant; LiteLLM shared) | Namespace + NetworkPolicy + ResourceQuota |
 | **Sandbox** | Kata (Hyper-V microVM) | Ephemeral tool execution | Hardware VM boundary, no secrets, `automountServiceAccountToken: false` |
 
@@ -261,7 +269,8 @@ agent-warden/
 │   │   ├── storage/            #   StorageClasses (ZRS/LRS Premium)
 │   │   ├── rbac/               #   Operator service account + ClusterRole
 │   │   ├── gateway/            #   Gateway API + HTTPRoute
-│   │   ├── monitoring/         #   Health check CronJob
+│   │   ├── litellm/            #   Shared LiteLLM Proxy (Deployment + ConfigMaps)
+│   │   ├── monitoring/         #   Health check CronJob + OTel Collector DaemonSet
 │   │   └── sandbox/            #   RuntimeClass (Kata Containers)
 │   ├── operator/               # K8s Operator (TypeScript)
 │   │   ├── config/crd/         #   OpenClawTenant CRD
@@ -278,6 +287,10 @@ agent-warden/
 │   └── src/
 │       ├── index.ts            #   Plugin entry: L1/L2/L2b/L3 DLP hooks
 │       └── purview-client.ts   #   Graph API processContent client (cross-tenant)
+├── agent-warden-agents-view/   # Agents View Plugin (OTel GenAI spans → App Insights)
+│   └── src/index.ts            #   Plugin entry: emits OTel traces via HTTP OTLP
+├── agent-warden-heartbeat/     # Heartbeat sidecar (gateway health → OTel metrics)
+│   └── src/heartbeat.ts        #   Probes gateway, emits health metrics
 ├── agent-warden-llm-proxy/     # LiteLLM (legacy sidecar; now shared Deployment)
 ├── agent-warden-saas-proxy/    # SaaS Auth Proxy sidecar (OAuth2 token injection)
 ├── sandbox-monitor/            # Sandbox PID 1 monitor (process/file/network)
