@@ -35,7 +35,6 @@
       "originalText": "Secure Multi-Tenant OpenClaw Architecture",
       "lineHeight": 1.25
     },
-
     {
       "id": "control-plane-bg",
       "type": "rectangle",
@@ -51,7 +50,9 @@
       "opacity": 40,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 10,
       "version": 1,
       "versionNonce": 10,
@@ -108,12 +109,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 20,
       "version": 1,
       "versionNonce": 20,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-mcp-server", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-mcp-server",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -166,12 +174,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 22,
       "version": 1,
       "versionNonce": 22,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-cosmos", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-cosmos",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -224,12 +239,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 24,
       "version": 1,
       "versionNonce": 24,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-keyvault", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-keyvault",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -282,12 +304,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 26,
       "version": 1,
       "versionNonce": 26,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-operator", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-operator",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -340,12 +369,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 28,
       "version": 1,
       "versionNonce": 28,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-monitor", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-monitor",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -398,12 +434,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 30,
       "version": 1,
       "versionNonce": 30,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-entra", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-entra",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -456,12 +499,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 32,
       "version": 1,
       "versionNonce": 32,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-sentinel", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-sentinel",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -514,12 +564,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 34,
       "version": 1,
       "versionNonce": 34,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-defender", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-defender",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -572,12 +629,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 36,
       "version": 1,
       "versionNonce": 36,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-acr", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-acr",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -615,7 +679,6 @@
       "originalText": "Azure Container\nRegistry (ACR)",
       "lineHeight": 1.25
     },
-
     {
       "id": "vnet-bg",
       "type": "rectangle",
@@ -631,7 +694,9 @@
       "opacity": 60,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 40,
       "version": 1,
       "versionNonce": 40,
@@ -673,7 +738,6 @@
       "originalText": "Azure Virtual Network (Azure CNI + Calico NetworkPolicy)",
       "lineHeight": 1.25
     },
-
     {
       "id": "aks-bg",
       "type": "rectangle",
@@ -689,7 +753,9 @@
       "opacity": 30,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 50,
       "version": 1,
       "versionNonce": 50,
@@ -731,7 +797,6 @@
       "originalText": "AKS Cluster (Workload Identity, OIDC)",
       "lineHeight": 1.25
     },
-
     {
       "id": "agc-box",
       "type": "rectangle",
@@ -747,12 +812,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 55,
       "version": 1,
       "versionNonce": 55,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-agc", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-agc",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -764,7 +836,7 @@
       "y": 335,
       "width": 460,
       "height": 30,
-      "text": "Application Gateway for Containers (AGC) — Gateway API + HTTPRoute per tenant",
+      "text": "Application Gateway for Containers (AGC) \u2014 Gateway API + HTTPRoute per tenant",
       "fontSize": 13,
       "fontFamily": 1,
       "textAlign": "center",
@@ -787,10 +859,9 @@
       "link": null,
       "locked": false,
       "containerId": "agc-box",
-      "originalText": "Application Gateway for Containers (AGC) — Gateway API + HTTPRoute per tenant",
+      "originalText": "Application Gateway for Containers (AGC) \u2014 Gateway API + HTTPRoute per tenant",
       "lineHeight": 1.25
     },
-
     {
       "id": "tenant-a-bg",
       "type": "rectangle",
@@ -806,7 +877,9 @@
       "opacity": 60,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 100,
       "version": 1,
       "versionNonce": 100,
@@ -848,7 +921,6 @@
       "originalText": "Namespace: tenant-<id> (StatefulSet, 1 pod)",
       "lineHeight": 1.25
     },
-
     {
       "id": "init-dlp",
       "type": "rectangle",
@@ -864,12 +936,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 110,
       "version": 1,
       "versionNonce": 110,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-init-dlp", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-init-dlp",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -907,7 +986,6 @@
       "originalText": "Init: install-purview-dlp-plugin (copies plugin to /data/state/plugins/)",
       "lineHeight": 1.25
     },
-
     {
       "id": "box-gateway",
       "type": "rectangle",
@@ -923,12 +1001,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 120,
       "version": 1,
       "versionNonce": 120,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-gateway", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-gateway",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -966,7 +1051,6 @@
       "originalText": "OpenClaw Gateway :18789\n\nPurview DLP Plugin v0.3.0\n  L1: Prompt Guard\n  L2: Output Scanner\n  L3: Input Audit",
       "lineHeight": 1.25
     },
-
     {
       "id": "box-litellm",
       "type": "rectangle",
@@ -982,12 +1066,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 130,
       "version": 1,
       "versionNonce": 130,
-      "isDeleted": false,
-      "boundElements": [{ "id": "txt-litellm", "type": "text" }],
+      "isDeleted": true,
+      "boundElements": [
+        {
+          "id": "txt-litellm",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1016,7 +1107,7 @@
       "seed": 131,
       "version": 1,
       "versionNonce": 131,
-      "isDeleted": false,
+      "isDeleted": true,
       "boundElements": null,
       "updated": 1,
       "link": null,
@@ -1025,7 +1116,6 @@
       "originalText": "LiteLLM\n:4000",
       "lineHeight": 1.25
     },
-
     {
       "id": "box-saas-proxy",
       "type": "rectangle",
@@ -1041,12 +1131,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 140,
       "version": 1,
       "versionNonce": 140,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-saas-proxy", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-saas-proxy",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1084,7 +1181,6 @@
       "originalText": "SaaS Proxy\n:9090",
       "lineHeight": 1.25
     },
-
     {
       "id": "box-pvc-state",
       "type": "rectangle",
@@ -1100,12 +1196,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 150,
       "version": 1,
       "versionNonce": 150,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-pvc-state", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-pvc-state",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1158,12 +1261,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 152,
       "version": 1,
       "versionNonce": 152,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-pvc-work", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-pvc-work",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1216,12 +1326,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 154,
       "version": 1,
       "versionNonce": 154,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-secrets-csi", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-secrets-csi",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1274,12 +1391,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 156,
       "version": 1,
       "versionNonce": 156,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-netpol", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-netpol",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1317,7 +1441,6 @@
       "originalText": "NetworkPolicy (deny-all default) + ResourceQuota + ServiceAccount (WI)",
       "lineHeight": 1.25
     },
-
     {
       "id": "tenant-n-label",
       "type": "text",
@@ -1350,7 +1473,6 @@
       "originalText": "Tenant N ...\n(same pattern,\n1 pod each)",
       "lineHeight": 1.25
     },
-
     {
       "id": "sandbox-bg",
       "type": "rectangle",
@@ -1366,7 +1488,9 @@
       "opacity": 50,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 170,
       "version": 1,
       "versionNonce": 170,
@@ -1423,12 +1547,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 172,
       "version": 1,
       "versionNonce": 172,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-sandbox-pod", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-sandbox-pod",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1466,7 +1597,6 @@
       "originalText": "Tool Exec Pod (Kata microVM)\nsandbox-monitor (PID 1)\ntelemetry to Cosmos DB",
       "lineHeight": 1.25
     },
-
     {
       "id": "ext-channels-bg",
       "type": "rectangle",
@@ -1482,7 +1612,9 @@
       "opacity": 60,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 200,
       "version": 1,
       "versionNonce": 200,
@@ -1539,12 +1671,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 202,
       "version": 1,
       "versionNonce": 202,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-telegram", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-telegram",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1597,12 +1736,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 204,
       "version": 1,
       "versionNonce": 204,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-slack", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-slack",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1655,12 +1801,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 206,
       "version": 1,
       "versionNonce": 206,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-discord", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-discord",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1698,7 +1851,6 @@
       "originalText": "Discord",
       "lineHeight": 1.25
     },
-
     {
       "id": "box-aoai",
       "type": "rectangle",
@@ -1714,12 +1866,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 210,
       "version": 1,
       "versionNonce": 210,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-aoai", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-aoai",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1757,7 +1916,6 @@
       "originalText": "Azure OpenAI\n(MI auth, Entra-only)",
       "lineHeight": 1.25
     },
-
     {
       "id": "box-purview",
       "type": "rectangle",
@@ -1773,12 +1931,19 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 220,
       "version": 1,
       "versionNonce": 220,
       "isDeleted": false,
-      "boundElements": [{ "id": "txt-purview", "type": "text" }],
+      "boundElements": [
+        {
+          "id": "txt-purview",
+          "type": "text"
+        }
+      ],
       "updated": 1,
       "link": null,
       "locked": false
@@ -1816,7 +1981,6 @@
       "originalText": "Microsoft Purview (DLP)\nE5 Tenant (cross-tenant)\nprocessContent API",
       "lineHeight": 1.25
     },
-
     {
       "id": "ext-saas-bg",
       "type": "rectangle",
@@ -1832,7 +1996,9 @@
       "opacity": 60,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 3 },
+      "roundness": {
+        "type": 3
+      },
       "seed": 230,
       "version": 1,
       "versionNonce": 230,
@@ -1874,7 +2040,6 @@
       "originalText": "SaaS Providers\n\nGoogle Workspace\nMicrosoft 365\nSalesforce\nGitHub\n\n(OAuth2 delegated)",
       "lineHeight": 1.25
     },
-
     {
       "id": "arrow-channels-to-agc",
       "type": "arrow",
@@ -1890,7 +2055,9 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 2 },
+      "roundness": {
+        "type": 2
+      },
       "seed": 300,
       "version": 1,
       "versionNonce": 300,
@@ -1899,7 +2066,16 @@
       "updated": 1,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [-200, -100]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -200,
+          -100
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
@@ -1921,7 +2097,9 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 2 },
+      "roundness": {
+        "type": 2
+      },
       "seed": 301,
       "version": 1,
       "versionNonce": 301,
@@ -1930,7 +2108,16 @@
       "updated": 1,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [0, 110]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          110
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
@@ -1952,16 +2139,27 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 2 },
+      "roundness": {
+        "type": 2
+      },
       "seed": 302,
       "version": 1,
       "versionNonce": 302,
-      "isDeleted": false,
+      "isDeleted": true,
       "boundElements": null,
       "updated": 1,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [20, 0]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          20,
+          0
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
@@ -1971,10 +2169,10 @@
     {
       "id": "arrow-litellm-to-aoai",
       "type": "arrow",
-      "x": 420,
-      "y": 510,
-      "width": 330,
-      "height": 50,
+      "x": 720,
+      "y": 515,
+      "width": 30,
+      "height": 35,
       "strokeColor": "#7048e8",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
@@ -1983,7 +2181,9 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 2 },
+      "roundness": {
+        "type": 2
+      },
       "seed": 303,
       "version": 1,
       "versionNonce": 303,
@@ -1992,7 +2192,16 @@
       "updated": 1,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [330, 50]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          30,
+          35
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
@@ -2002,11 +2211,11 @@
     {
       "id": "arrow-litellm-label",
       "type": "text",
-      "x": 550,
-      "y": 520,
-      "width": 160,
+      "x": 590,
+      "y": 590,
+      "width": 200,
       "height": 18,
-      "text": "MI token + Azure API translation",
+      "text": "Workload Identity \u2192 Azure OpenAI",
       "fontSize": 11,
       "fontFamily": 1,
       "textAlign": "center",
@@ -2028,7 +2237,7 @@
       "link": null,
       "locked": false,
       "containerId": null,
-      "originalText": "MI token + Azure API translation",
+      "originalText": "Workload Identity \u2192 Azure OpenAI",
       "lineHeight": 1.25
     },
     {
@@ -2047,7 +2256,9 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 2 },
+      "roundness": {
+        "type": 2
+      },
       "seed": 305,
       "version": 1,
       "versionNonce": 305,
@@ -2056,7 +2267,16 @@
       "updated": 1,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [450, 80]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          450,
+          80
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
@@ -2110,7 +2330,9 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 2 },
+      "roundness": {
+        "type": 2
+      },
       "seed": 307,
       "version": 1,
       "versionNonce": 307,
@@ -2119,7 +2341,16 @@
       "updated": 1,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [440, 100]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          440,
+          100
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
@@ -2142,7 +2373,9 @@
       "opacity": 100,
       "angle": 0,
       "groupIds": [],
-      "roundness": { "type": 2 },
+      "roundness": {
+        "type": 2
+      },
       "seed": 308,
       "version": 1,
       "versionNonce": 308,
@@ -2151,7 +2384,20 @@
       "updated": 1,
       "link": null,
       "locked": false,
-      "points": [[0, 0], [0, 200], [-300, 275]],
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          200
+        ],
+        [
+          -300,
+          275
+        ]
+      ],
       "lastCommittedPoint": null,
       "startBinding": null,
       "endBinding": null,
@@ -2190,7 +2436,6 @@
       "originalText": "provisions namespaces",
       "lineHeight": 1.25
     },
-
     {
       "id": "private-endpoints-note",
       "type": "text",
@@ -2262,7 +2507,7 @@
       "y": 920,
       "width": 700,
       "height": 18,
-      "text": "No Azure Firewall — network isolation via VNet + Calico NetworkPolicy + AGC ingress only",
+      "text": "No Azure Firewall \u2014 network isolation via VNet + Calico NetworkPolicy + AGC ingress only",
       "fontSize": 13,
       "fontFamily": 1,
       "textAlign": "left",
@@ -2284,7 +2529,172 @@
       "link": null,
       "locked": false,
       "containerId": null,
-      "originalText": "No Azure Firewall — network isolation via VNet + Calico NetworkPolicy + AGC ingress only",
+      "originalText": "No Azure Firewall \u2014 network isolation via VNet + Calico NetworkPolicy + AGC ingress only",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "shared-litellm-bg",
+      "type": "rectangle",
+      "x": 580,
+      "y": 470,
+      "width": 140,
+      "height": 90,
+      "strokeColor": "#e67700",
+      "backgroundColor": "#fff3bf",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "opacity": 100,
+      "angle": 0,
+      "groupIds": [],
+      "roundness": {
+        "type": 3
+      },
+      "seed": 9001,
+      "version": 1,
+      "versionNonce": 9001,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 1,
+      "link": null,
+      "locked": false
+    },
+    {
+      "id": "shared-litellm-txt",
+      "type": "text",
+      "x": 593,
+      "y": 480,
+      "width": 114,
+      "height": 72,
+      "text": "Shared LiteLLM\nProxy :4000\n(2 replicas, WI)",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "roughness": 0,
+      "opacity": 100,
+      "angle": 0,
+      "groupIds": [],
+      "roundness": null,
+      "seed": 9002,
+      "version": 1,
+      "versionNonce": 9002,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 1,
+      "link": null,
+      "locked": false,
+      "containerId": null,
+      "originalText": "Shared LiteLLM\nProxy :4000\n(2 replicas, WI)",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "shared-litellm-ns-label",
+      "type": "text",
+      "x": 580,
+      "y": 565,
+      "width": 140,
+      "height": 18,
+      "text": "agent-warden-system",
+      "fontSize": 12,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "strokeColor": "#868e96",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "roughness": 0,
+      "opacity": 100,
+      "angle": 0,
+      "groupIds": [],
+      "roundness": null,
+      "seed": 9003,
+      "version": 1,
+      "versionNonce": 9003,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 1,
+      "link": null,
+      "locked": false,
+      "containerId": null,
+      "originalText": "agent-warden-system",
+      "lineHeight": 1.25
+    },
+    {
+      "id": "arrow-gw-to-shared-litellm",
+      "type": "arrow",
+      "x": 300,
+      "y": 530,
+      "width": 280,
+      "height": 15,
+      "strokeColor": "#e67700",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roughness": 1,
+      "opacity": 100,
+      "angle": 0,
+      "groupIds": [],
+      "roundness": {
+        "type": 2
+      },
+      "seed": 9004,
+      "version": 1,
+      "versionNonce": 9004,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 1,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          280,
+          -15
+        ]
+      ],
+      "lastCommittedPoint": null,
+      "startBinding": null,
+      "endBinding": null,
+      "startArrowhead": null,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "arrow-cross-ns-label",
+      "type": "text",
+      "x": 340,
+      "y": 508,
+      "width": 200,
+      "height": 18,
+      "text": "cross-namespace (NetworkPolicy)",
+      "fontSize": 12,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "strokeColor": "#e67700",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 1,
+      "roughness": 0,
+      "opacity": 100,
+      "angle": 0,
+      "groupIds": [],
+      "roundness": null,
+      "seed": 9005,
+      "version": 1,
+      "versionNonce": 9005,
+      "isDeleted": false,
+      "boundElements": null,
+      "updated": 1,
+      "link": null,
+      "locked": false,
+      "containerId": null,
+      "originalText": "cross-namespace (NetworkPolicy)",
       "lineHeight": 1.25
     }
   ],
