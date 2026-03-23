@@ -2,7 +2,7 @@
 
 A production-grade platform for hosting isolated [OpenClaw](https://github.com/pinkpixel-dev/openclaw) AI agent instances on Azure Kubernetes Service, governed by the **Agent Warden Server** that manages the full tenant lifecycle — from provisioning to cryptographic deletion.
 
-Agent Warden provides **defense-in-depth security** for multi-tenant AI agent hosting, combining Kubernetes-level isolation, Microsoft Purview DLP enforcement, Kata Containers hardware sandboxing, and Azure-native identity and secret management. Each tenant operates in a fully isolated namespace with its own Key Vault, Managed Identity, NetworkPolicy, and resource quotas.
+Agent Warden provides **defense-in-depth security** for multi-tenant AI agent hosting, combining Kubernetes-level isolation, Microsoft Purview DLP enforcement, Microsoft Defender for Containers runtime detection, and Azure-native identity and secret management. Each tenant operates in a fully isolated namespace with its own Key Vault, Managed Identity, NetworkPolicy, and resource quotas.
 
 ## Overview
 
@@ -16,7 +16,6 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 | **Agents View Plugin** | OpenClaw plugin emitting GenAI OTel spans (model, tokens, latency) via HTTP OTLP to the OTel Collector |
 | **OTel Collector** | DaemonSet in `agent-warden-system` receiving traces/metrics and exporting to Application Insights via Azure Monitor exporter |
 | **Heartbeat Sidecar** | Per-tenant sidecar probing gateway health and emitting OTel metrics |
-| **Sandbox Monitor** | PID 1 process inside Kata microVM that monitors tool execution for suspicious binaries, files, and network connections |
 | **Helm Chart** | Per-tenant chart deploying StatefulSet, NetworkPolicy, ResourceQuota, SecretProviderClass, ServiceAccount, and HTTPRoute |
 
 ## Architecture
@@ -51,10 +50,6 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
 │  │  └──────────────────┘  └──────────────────┘  └────────────────┘  │       │
 │  └───────────────────────────────────────────────────────────────────┘       │
 │                                                                              │
-│  ┌─ Sandbox Pool (Kata Containers — Hyper-V microVM) ────────────────┐       │
-│  │  Tool Exec Pod (ephemeral, Kata microVM) + sandbox-monitor PID 1  │       │
-│  └───────────────────────────────────────────────────────────────────┘       │
-│                                                                              │
 │  agent-warden-system namespace                                               │
 │  ┌─────────────────┐  ┌────────────────┐  ┌──────────────────┐              │
 │  │ Agent Warden    │  │ K8s Operator   │  │ LiteLLM Proxy    │              │
@@ -83,13 +78,12 @@ Agent Warden provides **defense-in-depth security** for multi-tenant AI agent ho
                                              OAuth2 delegated access
 ```
 
-### 3-Pool Node Architecture
+### 2-Pool Node Architecture
 
 | Pool | Runtime | Purpose | Isolation |
 |------|---------|---------|-----------|
 | **System** | runc | Control plane (operator, Agent Warden Server, OTel Collector, shared LiteLLM) | System taint |
-| **Tenant** | runc | Gateway pods (OpenClaw + SaaS proxy per tenant; LiteLLM shared) | Namespace + NetworkPolicy + ResourceQuota |
-| **Sandbox** | Kata (Hyper-V microVM) | Ephemeral tool execution | Hardware VM boundary, no secrets, `automountServiceAccountToken: false` |
+| **Tenant** | runc | Gateway pods (OpenClaw + SaaS proxy per tenant; LiteLLM shared) | Namespace + NetworkPolicy + ResourceQuota + Defender eBPF |
 
 ### DLP Defense-in-Depth (v0.4.0)
 
@@ -254,7 +248,7 @@ agent-warden/
 │   └── security-scan.yaml      #   Trivy + Checkov scans
 ├── infra/terraform/            # Infrastructure as Code
 │   ├── modules/                #   Reusable Terraform modules
-│   │   ├── aks/                #     AKS cluster (3-pool, Calico, Workload Identity)
+│   │   ├── aks/                #     AKS cluster (2-pool, Calico, Workload Identity)
 │   │   ├── vnet/               #     Virtual network + subnets + NSGs
 │   │   ├── keyvault/           #     Platform Key Vault (HSM Premium)
 │   │   ├── cosmos/             #     Cosmos DB (tenant registry + audit)
@@ -270,8 +264,7 @@ agent-warden/
 │   │   ├── rbac/               #   Operator service account + ClusterRole
 │   │   ├── gateway/            #   Gateway API + HTTPRoute
 │   │   ├── litellm/            #   Shared LiteLLM Proxy (Deployment + ConfigMaps)
-│   │   ├── monitoring/         #   Health check CronJob + OTel Collector DaemonSet
-│   │   └── sandbox/            #   RuntimeClass (Kata Containers)
+│   │   └── monitoring/         #   Health check CronJob + OTel Collector DaemonSet
 │   ├── operator/               # K8s Operator (TypeScript)
 │   │   ├── config/crd/         #   OpenClawTenant CRD
 │   │   └── src/                #   Reconciler logic
@@ -293,7 +286,6 @@ agent-warden/
 │   └── src/heartbeat.ts        #   Probes gateway, emits health metrics
 ├── agent-warden-llm-proxy/     # LiteLLM (legacy sidecar; now shared Deployment)
 ├── agent-warden-saas-proxy/    # SaaS Auth Proxy sidecar (OAuth2 token injection)
-├── sandbox-monitor/            # Sandbox PID 1 monitor (process/file/network)
 ├── scripts/                    # Automation scripts
 │   ├── bootstrap-azure.sh      #   Full infra bootstrap
 │   ├── provision-tenant.sh     #   Tenant onboarding
@@ -321,16 +313,15 @@ All workflows use **OIDC federated credentials** (no static Azure secrets).
 
 ## Security Model
 
-Agent Warden implements **defense-in-depth** across 12 security domains. For full details, see [docs/design/security.md](docs/design/security.md).
+Agent Warden implements **defense-in-depth** across 11 security domains. For full details, see [docs/design/security.md](docs/design/security.md).
 
 | Domain | Key Features |
 |--------|-------------|
-| **Tenant Isolation** | Per-namespace, NetworkPolicy, ResourceQuota, Kata microVM sandbox |
+| **Tenant Isolation** | Per-namespace, NetworkPolicy, ResourceQuota, Defender for Containers eBPF |
 | **Network Security** | Default-deny NetworkPolicy, Calico, VNet segmentation, private endpoints, WAF |
 | **Identity & Access** | Workload Identity, Entra RBAC, PIM, Conditional Access, 5-role RBAC model |
 | **Secrets** | HSM-backed Key Vault (Premium), 3-tier envelope encryption, CSI driver with auto-rotation |
 | **DLP** | 4-layer Purview DLP (L1 prompt guard, L2 output scanner, L2b response blocker, L3 input audit) |
-| **Sandbox** | Kata Containers (Hyper-V microVM), PID 1 monitor, suspicious binary/file/network detection |
 | **Audit** | Cosmos DB audit log, Log Analytics, Sentinel SIEM, 11+ event types, WORM audit trail |
 | **Data Governance** | SaaS activity ledger, data lineage tracking, access governance, compliance reporting |
 | **Resource Governance** | Per-tier ResourceQuota/LimitRange, rate limiting, noisy-neighbor protection |
