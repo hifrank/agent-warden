@@ -88,18 +88,80 @@ data:
         except Exception:
             pass
 
+    # ── Pod IP → Tenant resolver (uses K8s API from in-cluster SA) ──
+
+    _ip_tenant_cache = {}
+    _ip_cache_lock = threading.Lock()
+
+    def _resolve_tenant_from_ip(ip_addr):
+        """Resolve a pod IP to a tenant ID using K8s API. Cached in memory."""
+        if not ip_addr:
+            return None
+        with _ip_cache_lock:
+            if ip_addr in _ip_tenant_cache:
+                return _ip_tenant_cache[ip_addr]
+        try:
+            import urllib.request
+            # In-cluster K8s API access via service account token
+            token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+            ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+            if not os.path.exists(token_path):
+                return None
+            with open(token_path, "r") as f:
+                k8s_token = f.read().strip()
+            # Query pods by IP across tenant-* namespaces
+            import ssl
+            ctx = ssl.create_default_context(cafile=ca_path)
+            url = f"https://kubernetes.default.svc/api/v1/pods?fieldSelector=status.podIP%3D{ip_addr}"
+            req = urllib.request.Request(url)
+            req.add_header("Authorization", f"Bearer {k8s_token}")
+            with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+                data = json.loads(resp.read())
+            items = data.get("items", [])
+            for pod in items:
+                ns = pod.get("metadata", {}).get("namespace", "")
+                if ns.startswith("tenant-"):
+                    tenant_id = ns[len("tenant-"):]
+                    with _ip_cache_lock:
+                        _ip_tenant_cache[ip_addr] = tenant_id
+                    return tenant_id
+        except Exception:
+            pass
+        return None
+
     # ── Callback class ──
 
     class DataLLMCallback(CustomLogger):
         def _extract_tenant_id(self, kwargs):
-            """Extract tenant_id from LiteLLM metadata (set by OpenClaw via user field)."""
+            """Extract tenant_id from metadata, headers, user field, or pod IP resolution."""
             metadata = kwargs.get("metadata", {}) or {}
-            return (
-                metadata.get("tenant_id")
-                or metadata.get("user")
-                or kwargs.get("user", "")
-                or "unknown"
-            )
+            # 1. Explicit metadata (virtual keys or injected)
+            tid = metadata.get("tenant_id")
+            if tid:
+                return tid
+            # user_api_key_user_id is set to 'default_user_id' by LiteLLM when using master key — skip it
+            uid = metadata.get("user_api_key_user_id") or ""
+            if uid and uid != "default_user_id":
+                return uid
+            # 2. Custom header
+            litellm_params = kwargs.get("litellm_params", {}) or {}
+            proxy_req = litellm_params.get("proxy_server_request", {}) or {}
+            headers = proxy_req.get("headers", {}) or {}
+            tid = headers.get("x-tenant-id")
+            if tid:
+                return tid
+            # 3. user field from request body
+            tid = kwargs.get("user") or ""
+            if tid:
+                return tid
+            # 4. Resolve tenant from requester pod IP via K8s API
+            slo = kwargs.get("standard_logging_object", {}) or {}
+            if isinstance(slo, dict):
+                ip = slo.get("requester_ip_address")
+                tid = _resolve_tenant_from_ip(ip)
+                if tid:
+                    return tid
+            return "unknown"
 
         def _emit(self, kwargs, response_obj, start_time, end_time):
             try:
