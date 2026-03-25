@@ -1,33 +1,163 @@
-"""
-LiteLLM custom callback — emits structured data.llm events to stdout
-for the Agent Warden governance lineage aggregator.
-
-Mount this file in the LiteLLM container and set:
-  litellm_settings:
-    success_callback: ["custom_callback_handler.data_llm_callback"]
-
-Ref: https://docs.litellm.ai/docs/observability/custom_callback
-"""
-
+"""LiteLLM custom callback — emits structured data.llm events to stdout + Cosmos DB.
+In shared mode, tenant_id is extracted from request metadata."""
 import json
 import sys
 import os
+import uuid
+import threading
 from datetime import datetime, timezone
 from litellm.integrations.custom_logger import CustomLogger
 
+# ── Cosmos DB REST writer (uses Managed Identity via Azure IMDS) ──
+
+_cosmos_endpoint = os.environ.get("COSMOS_ENDPOINT", "")
+_cosmos_database = os.environ.get("COSMOS_DATABASE", "agent-warden")
+_cosmos_container = "governance"
+_cosmos_token_cache = {"token": None, "expires_at": 0}
+_cosmos_lock = threading.Lock()
+
+def _get_cosmos_token():
+    """Acquire Cosmos DB token via Workload Identity federated token exchange."""
+    import time
+    import urllib.parse
+    now = time.time()
+    with _cosmos_lock:
+        if _cosmos_token_cache["token"] and _cosmos_token_cache["expires_at"] > now + 60:
+            return _cosmos_token_cache["token"]
+    try:
+        import urllib.request
+        token_file = os.environ.get("AZURE_FEDERATED_TOKEN_FILE", "")
+        client_id = os.environ.get("AZURE_CLIENT_ID", "")
+        tenant_id = os.environ.get("AZURE_TENANT_ID", "")
+        authority = os.environ.get("AZURE_AUTHORITY_HOST", "https://login.microsoftonline.com/")
+        if not (token_file and client_id and tenant_id):
+            return None
+        with open(token_file, "r") as f:
+            federated_token = f.read().strip()
+        token_url = f"{authority.rstrip('/')}/{tenant_id}/oauth2/v2.0/token"
+        body = urllib.parse.urlencode({
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+            "client_assertion": federated_token,
+            "scope": "https://cosmos.azure.com/.default",
+        }).encode("utf-8")
+        req = urllib.request.Request(token_url, data=body, method="POST")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+        with _cosmos_lock:
+            _cosmos_token_cache["token"] = data["access_token"]
+            _cosmos_token_cache["expires_at"] = now + int(data.get("expires_in", 3600)) - 120
+        return data["access_token"]
+    except Exception:
+        return None
+
+def _write_to_cosmos(event):
+    """Best-effort write event doc to Cosmos governance container via REST API."""
+    if not _cosmos_endpoint:
+        return
+    token = _get_cosmos_token()
+    if not token:
+        return
+    try:
+        import urllib.request
+        url = (
+            f"{_cosmos_endpoint}/dbs/{_cosmos_database}"
+            f"/colls/{_cosmos_container}/docs"
+        )
+        body = json.dumps(event).encode("utf-8")
+        req = urllib.request.Request(url, data=body, method="POST")
+        req.add_header("Authorization", f"type%3Daad%26ver%3D1.0%26sig%3D{token}")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("x-ms-version", "2020-07-15")
+        req.add_header("x-ms-documentdb-partitionkey", json.dumps([event.get("tenantId", "")]))
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass
+
+# ── Pod IP → Tenant resolver (uses K8s API from in-cluster SA) ──
+
+_ip_tenant_cache = {}
+_ip_cache_lock = threading.Lock()
+
+def _resolve_tenant_from_ip(ip_addr):
+    """Resolve a pod IP to a tenant ID using K8s API. Cached in memory."""
+    if not ip_addr:
+        return None
+    with _ip_cache_lock:
+        if ip_addr in _ip_tenant_cache:
+            return _ip_tenant_cache[ip_addr]
+    try:
+        import urllib.request
+        # In-cluster K8s API access via service account token
+        token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        if not os.path.exists(token_path):
+            return None
+        with open(token_path, "r") as f:
+            k8s_token = f.read().strip()
+        # Query pods by IP across tenant-* namespaces
+        import ssl
+        ctx = ssl.create_default_context(cafile=ca_path)
+        url = f"https://kubernetes.default.svc/api/v1/pods?fieldSelector=status.podIP%3D{ip_addr}"
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", f"Bearer {k8s_token}")
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+            data = json.loads(resp.read())
+        items = data.get("items", [])
+        for pod in items:
+            ns = pod.get("metadata", {}).get("namespace", "")
+            if ns.startswith("tenant-"):
+                tenant_id = ns[len("tenant-"):]
+                with _ip_cache_lock:
+                    _ip_tenant_cache[ip_addr] = tenant_id
+                return tenant_id
+    except Exception:
+        pass
+    return None
+
+# ── Callback class ──
 
 class DataLLMCallback(CustomLogger):
-    def __init__(self):
-        self.tenant_id = os.environ.get("TENANT_ID", "")
+    def _extract_tenant_id(self, kwargs):
+        """Extract tenant_id from metadata, headers, user field, or pod IP resolution."""
+        metadata = kwargs.get("metadata", {}) or {}
+        # 1. Explicit metadata (virtual keys or injected)
+        tid = metadata.get("tenant_id")
+        if tid:
+            return tid
+        # user_api_key_user_id is set to 'default_user_id' by LiteLLM when using master key — skip it
+        uid = metadata.get("user_api_key_user_id") or ""
+        if uid and uid != "default_user_id":
+            return uid
+        # 2. Custom header
+        litellm_params = kwargs.get("litellm_params", {}) or {}
+        proxy_req = litellm_params.get("proxy_server_request", {}) or {}
+        headers = proxy_req.get("headers", {}) or {}
+        tid = headers.get("x-tenant-id")
+        if tid:
+            return tid
+        # 3. user field from request body
+        tid = kwargs.get("user") or ""
+        if tid:
+            return tid
+        # 4. Resolve tenant from requester pod IP via K8s API
+        slo = kwargs.get("standard_logging_object", {}) or {}
+        if isinstance(slo, dict):
+            ip = slo.get("requester_ip_address")
+            tid = _resolve_tenant_from_ip(ip)
+            if tid:
+                return tid
+        return "unknown"
 
-    def log_success_event(self, kwargs, response_obj, start_time, end_time):
-        """Called on every successful LLM completion."""
+    def _emit(self, kwargs, response_obj, start_time, end_time):
         try:
             usage = getattr(response_obj, "usage", None)
             model = kwargs.get("model", "unknown")
             litellm_params = kwargs.get("litellm_params", {})
+            tenant_id = self._extract_tenant_id(kwargs)
 
-            # Extract trace ID from metadata or headers
             metadata = kwargs.get("metadata", {}) or {}
             trace_id = (
                 metadata.get("trace_id")
@@ -40,22 +170,32 @@ class DataLLMCallback(CustomLogger):
                 duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
             event = {
+                "id": str(uuid.uuid4()),
                 "type": "data.llm",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "tenantId": self.tenant_id,
+                "tenantId": tenant_id,
                 "traceId": trace_id,
                 "model": model,
                 "provider": litellm_params.get("custom_llm_provider", "azure-openai"),
                 "promptTokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
                 "completionTokens": getattr(usage, "completion_tokens", 0) if usage else 0,
                 "durationMs": duration_ms,
+                "_lineagePushed": False,
             }
 
-            # Write to stdout as JSON line (Container Insights picks this up)
+            # Stdout (Container Insights)
             sys.stdout.write(json.dumps(event) + "\n")
             sys.stdout.flush()
-        except Exception:
-            pass  # Fail silently — never block LLM responses
 
+            # Cosmos DB (direct write for lineage aggregator)
+            _write_to_cosmos(event)
+        except Exception:
+            pass
+
+    def log_success_event(self, kwargs, response_obj, start_time, end_time):
+        self._emit(kwargs, response_obj, start_time, end_time)
+
+    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+        self._emit(kwargs, response_obj, start_time, end_time)
 
 data_llm_callback = DataLLMCallback()
