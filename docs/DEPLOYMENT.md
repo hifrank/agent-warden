@@ -198,7 +198,8 @@ The shared LiteLLM Proxy runs in `agent-warden-system` and serves all tenants, r
 
 1. **K8s Secret** — Create `litellm-proxy-secret` in `agent-warden-system` with `master-key` and `cosmos-endpoint`
 2. **Federated Credential** — Create `fed-litellm-proxy` on the platform MI for Workload Identity
-3. **RBAC** — Platform MI needs `Cognitive Services OpenAI User` on the AOAI resource
+3. **Azure RBAC** — Platform MI needs `Cognitive Services OpenAI User` on the AOAI resource
+4. **K8s RBAC** — `litellm-rbac.yaml` grants `pods:list` to the `litellm-proxy` ServiceAccount for tenant attribution via pod IP resolution (see [litellm-rbac.yaml](../k8s/base/litellm/litellm-rbac.yaml))
 
 ### Deploy
 
@@ -242,6 +243,8 @@ When `shared: true`:
 15. **Model name matching**: `model_name` in LiteLLM config must match what OpenClaw sends (i.e. `baseModel`), not the Azure deployment name.
 16. **Telegram channel config**: Stored in `openclaw.json` as `channels.telegram.accounts.default.botToken` — this is runtime state NOT managed by Helm. Back up before re-seeding.
 17. **stream_options**: Do NOT set `stream_options.include_usage: true` in LiteLLM model params — causes 400 on non-streaming requests.
+18. **Tenant attribution**: In shared mode, tenant ID is resolved by mapping the requester pod IP to a `tenant-*` namespace via K8s API. The callback uses `standard_logging_object.requester_ip_address` and caches results in-memory. Requires `pods:list` RBAC (see `litellm-rbac.yaml`).
+19. **Callback canonical source**: The authoritative callback code lives in the `litellm-proxy-callback` ConfigMap ([litellm-callback.yaml](../k8s/base/litellm/litellm-callback.yaml)). The standalone `custom_callback.py` is a synced copy for reference.
 
 ## Manual Steps (Cannot Be Automated)
 

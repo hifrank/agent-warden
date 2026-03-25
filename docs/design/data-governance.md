@@ -407,14 +407,27 @@ TTL policy: 90 days (configurable per tier: free=30d, pro=90d, enterprise=365d)
           │  └──────┬────────────┼──────────┬───────────┘  │
           │         │            │          │               │
           │    ┌────▼────┐  ┌───▼────┐  ┌──▼─────────┐    │
-          │    │ LiteLLM │  │ Sandbox│  │ SaaS Proxy  │    │
-          │    │ :4000   │  │ (Kata) │  │ :9090       │    │
-          │    │         │  │        │  │             │    │
-          │    │ data.llm│  │ teleme-│  │ data.activity│   │
-          │    │ events  │  │ try    │  │ events      │    │
-          │    └────┬────┘  └───┬────┘  └──┬──────────┘   │
-          └─────────┼───────────┼──────────┼───────────────┘
-                    │           │          │
+          │    │ Sandbox │  │        │  │ SaaS Proxy  │    │
+          │    │ (Kata)  │  │        │  │ :9090       │    │
+          │    │ teleme- │  │        │  │             │    │
+          │    │ try     │  │        │  │ data.activity│   │
+          │    └────┬────┘  │        │  │ events      │    │
+          └─────────┼───────┼────────┼──┴─────────────┘    │
+                    │       │        │                      │
+                    │       │        ▼                      │
+  ┌─────────────────┼───────┼──────────────────────────────┼──┐
+  │  agent-warden-system    │                              │  │
+  │    ┌────────────────────▼──────────────────────┐       │  │
+  │    │  Shared LiteLLM Proxy :4000                │       │  │
+  │    │  ┌─ DataLLMCallback (custom_callback.py) ─┐│       │  │
+  │    │  │ • Tenant ID via pod IP → K8s API        ││       │  │
+  │    │  │ • data.llm events → stdout + Cosmos DB  ││       │  │
+  │    │  │ • Token counts (prompt + completion)    ││       │  │
+  │    │  └────────────────────────────────────────┘│       │  │
+  │    │  RBAC: pods:list (litellm-rbac.yaml)       │       │  │
+  │    └────────────────────┬──────────────────────┘       │  │
+  └─────────────────────────┼──────────────────────────────┘  │
+                    │       │          │
         ┌───────────▼──┐  ┌────▼──────┐  ┌▼───────────────────────┐
         │ Azure OpenAI │  │ Cosmos DB │  │ SaaS Providers         │
         │ (MI auth)    │  │governance │  │ Google · Graph · GitHub │
@@ -747,10 +760,12 @@ The lineage aggregator waits for a trace to complete (all hops for one `traceId`
 - Create `governance` container in Cosmos DB
 - Container Insights picks up logs → also available via KQL
 
-### Phase 2: LLM Audit Trail + Trace Headers
-- Configure LiteLLM `success_callback` to log token usage + trace metadata
-- Add `X-Trace-Id` header propagation
-- Emit `data.llm` events to stdout
+### Phase 2: LLM Audit Trail + Tenant Attribution ✔️
+- ✔️ LiteLLM custom callback (`DataLLMCallback`) emits `data.llm` events to stdout + Cosmos DB
+- ✔️ Tenant ID attribution via pod IP → K8s namespace resolution (4-level fallback)
+- ✔️ RBAC: `litellm-proxy-pods-reader` ClusterRole grants `pods:list` for IP resolution
+- ✔️ Cosmos DB direct write via Workload Identity (federated token exchange)
+- ⚠️ `X-Trace-Id` header propagation — pending OpenClaw trace support
 
 ### Phase 3: Purview Data Map Bootstrap
 - Register custom type definitions (§11.3) — add to `scripts/bootstrap-azure.sh`

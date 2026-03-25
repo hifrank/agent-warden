@@ -53,6 +53,7 @@ Zero-trust identity model with no static credentials in containers.
 | Privileged Identity Management (PIM) | Just-in-time access for platform operators, time-boxed role activation, approval workflows for KEK operations | Entra ID PIM |
 | Operator least-privilege ClusterRole | Operator SA scoped to only namespaces, statefulsets, networkpolicies, secretproviderclasses, CRDs | [operator-rbac.yaml](../../k8s/base/rbac/operator-rbac.yaml) |
 | CI/CD OIDC federation | GitHub Actions use federated credentials (no static Azure secrets in repos) | App Registration + GitHub OIDC |
+| LiteLLM pod-listing RBAC | `litellm-proxy` SA has `pods:list` ClusterRole for tenant attribution via pod IP → namespace resolution | [litellm-rbac.yaml](../../k8s/base/litellm/litellm-rbac.yaml) |
 
 ### Design doc reference: §5, §15.3
 
@@ -131,7 +132,7 @@ Comprehensive audit trail with tamper-proof storage and SIEM integration.
 | Layer | Scope | Description | Component |
 |-------|-------|-------------|-----------|
 | **L1: Activity Ledger** | Every SaaS API call | Logs operation, provider, resource, DLP status as `data.activity` events | [proxy.ts](../../agent-warden-saas-proxy/src/proxy.ts) |
-| **L2: Data Lineage** | Data flow tracking | Source → agent processing → LLM enrichment → destination for each data flow | Cosmos DB governance container |
+| **L2: Data Lineage** | Data flow tracking | Source → agent processing → LLM enrichment → destination for each data flow; LLM calls attributed to tenants via pod IP resolution | Cosmos DB governance container + LiteLLM callback |
 | **L3: Access Governance** | Permission tracking | Scope validation, delegated permission auditing, access reviews | Agent Warden Server MCP tools |
 | **L4: Compliance Reporting** | Regulatory dashboards | Data residency verification, regulatory compliance reports | Log Analytics + Sentinel |
 
