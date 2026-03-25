@@ -1,0 +1,36 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-warden-server
+  labels:
+    app.kubernetes.io/name: agent-warden-server
+    app.kubernetes.io/part-of: agent-warden
+rules:
+  - apiGroups: [""]
+    resources: [pods, services, namespaces, persistentvolumeclaims]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  - apiGroups: [apps]
+    resources: [statefulsets, deployments]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [openclaw.io]
+    resources: [openclawtenants]
+    verbs: [get, list, watch, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-warden-server
+  labels:
+    app.kubernetes.io/name: agent-warden-server
+    app.kubernetes.io/part-of: agent-warden
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agent-warden-server
+subjects:
+  - kind: ServiceAccount
+    name: agent-warden-server
+    namespace: agent-warden-system
