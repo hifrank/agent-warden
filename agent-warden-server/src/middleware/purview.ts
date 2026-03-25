@@ -112,7 +112,7 @@ async function getPurviewToken(purviewEndpoint: string): Promise<string> {
  * Local fast-path scan using regex patterns.
  * Returns early matches without needing a Purview API call.
  */
-function localPreScan(
+export function localPreScan(
   content: string
 ): { matches: SensitiveInfoMatch[]; highestAction: DLPAction } {
   const matches: SensitiveInfoMatch[] = [];
@@ -149,7 +149,7 @@ function localPreScan(
 /**
  * Redact sensitive matches from content by replacing with masked text.
  */
-function redactContent(
+export function redactContent(
   content: string,
   matches: SensitiveInfoMatch[]
 ): string {
@@ -237,7 +237,7 @@ async function purviewClassify(
 /**
  * Determine the sensitivity label based on detected SITs.
  */
-function determineSensitivityLabel(matches: SensitiveInfoMatch[]): string {
+export function determineSensitivityLabel(matches: SensitiveInfoMatch[]): string {
   const names = new Set(matches.map((m) => m.name.toLowerCase()));
 
   if (

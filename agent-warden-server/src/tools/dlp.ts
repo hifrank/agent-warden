@@ -10,6 +10,65 @@ import { getCosmosDb } from "../middleware/cosmos.js";
 // Sentinel DLP Tools (§16.7)
 // ──────────────────────────────────────────────────────────
 
+/** Default policies — seeded into Cosmos on first call if container is empty. */
+const DEFAULT_POLICIES = [
+  {
+    id: "block-credentials-to-llm",
+    name: "block-credentials-to-llm",
+    description:
+      "Block API keys, tokens, and passwords from being sent to LLM providers",
+    locations: ["llm.outbound"],
+    action: "block",
+    severity: "critical",
+    sensitiveInfoTypes: [
+      "OpenAI API Key",
+      "GitHub PAT",
+      "Slack Bot Token",
+      "AWS Access Key",
+      "Password in chat",
+      "CUSTOM.API_KEY_PATTERN",
+    ],
+    enabled: true,
+  },
+  {
+    id: "redact-pii-in-logs",
+    name: "redact-pii-in-logs",
+    description: "Redact PII (SSN, credit cards) before persistence or LLM",
+    locations: ["session.persist", "log.write", "llm.outbound"],
+    action: "redact",
+    severity: "high",
+    sensitiveInfoTypes: [
+      "SSN",
+      "Credit Card",
+      "MICROSOFT.GOVERNMENT.US.SOCIAL_SECURITY_NUMBER",
+      "MICROSOFT.FINANCIAL.CREDIT_CARD_NUMBER",
+    ],
+    enabled: true,
+  },
+  {
+    id: "phi-handling",
+    name: "phi-handling",
+    description:
+      "Block PHI in non-enterprise tenants; require HIPAA tier for health data",
+    locations: ["all"],
+    action: "block",
+    severity: "high",
+    tierRestriction: "enterprise",
+    sensitiveInfoTypes: ["PHI", "MICROSOFT.HEALTH.*"],
+    enabled: true,
+  },
+  {
+    id: "bulk-pii-detection",
+    name: "bulk-pii-detection",
+    description: "Alert when bulk PII is detected in a single interaction",
+    locations: ["all"],
+    action: "alert",
+    severity: "high",
+    threshold: 10,
+    enabled: true,
+  },
+];
+
 /**
  * warden.dlp.scan — Scan content for sensitive data via local patterns + Purview API.
  */
@@ -56,59 +115,35 @@ export async function dlpScan(
 }
 
 /**
- * warden.dlp.policy.list — List active DLP policies and their configuration.
+ * warden.dlp.policy.list — List active DLP policies from Cosmos (seeds defaults on first call).
  */
-export function listDLPPolicies(): object[] {
-  // These policies are defined in §16.5 and enforced by the scan middleware
-  return [
-    {
-      name: "block-credentials-to-llm",
-      description:
-        "Block API keys, tokens, and passwords from being sent to LLM providers",
-      locations: ["llm.outbound"],
-      action: "block",
-      severity: "critical",
-      sensitiveInfoTypes: [
-        "OpenAI API Key",
-        "GitHub PAT",
-        "Slack Bot Token",
-        "AWS Access Key",
-        "Password in chat",
-        "CUSTOM.API_KEY_PATTERN",
-      ],
-    },
-    {
-      name: "redact-pii-in-logs",
-      description: "Redact PII (SSN, credit cards) before persistence or LLM",
-      locations: ["session.persist", "log.write", "llm.outbound"],
-      action: "redact",
-      severity: "high",
-      sensitiveInfoTypes: [
-        "SSN",
-        "Credit Card",
-        "MICROSOFT.GOVERNMENT.US.SOCIAL_SECURITY_NUMBER",
-        "MICROSOFT.FINANCIAL.CREDIT_CARD_NUMBER",
-      ],
-    },
-    {
-      name: "phi-handling",
-      description:
-        "Block PHI in non-enterprise tenants; require HIPAA tier for health data",
-      locations: ["all"],
-      action: "block",
-      severity: "high",
-      tierRestriction: "enterprise",
-      sensitiveInfoTypes: ["PHI", "MICROSOFT.HEALTH.*"],
-    },
-    {
-      name: "bulk-pii-detection",
-      description: "Alert when bulk PII is detected in a single interaction",
-      locations: ["all"],
-      action: "alert",
-      severity: "high",
-      threshold: 10,
-    },
-  ];
+export async function listDLPPolicies(
+  cosmosEndpoint: string,
+  cosmosDatabase: string
+): Promise<object[]> {
+  const db = await getCosmosDb(cosmosEndpoint, cosmosDatabase);
+  const container = db.container("dlp-policies");
+
+  // Try to read existing policies
+  try {
+    const { resources } = await container.items
+      .query({ query: "SELECT * FROM c WHERE c.enabled = true ORDER BY c.severity" })
+      .fetchAll();
+    if (resources.length > 0) return resources;
+  } catch {
+    // Container may not exist — create it
+    await db.containers.createIfNotExists({
+      id: "dlp-policies",
+      partitionKey: { paths: ["/id"] },
+    });
+  }
+
+  // Seed default policies
+  for (const policy of DEFAULT_POLICIES) {
+    await container.items.upsert(policy);
+  }
+
+  return DEFAULT_POLICIES;
 }
 
 /**

@@ -40,6 +40,7 @@ import {
 } from "./middleware/purview-governance.js";
 import { aggregateAndPushLineage } from "./tools/lineage-aggregator.js";
 import { queryScopeUsage, buildDataMap, queryAnomalies } from "./tools/governance-queries.js";
+import { authenticateRequest } from "./middleware/auth.js";
 
 const config = loadConfig();
 
@@ -252,7 +253,10 @@ server.tool(
   "List all active DLP policies and their configuration",
   {},
   async () => {
-    const policies = listDLPPolicies();
+    const policies = await listDLPPolicies(
+      config.AZURE_COSMOS_ENDPOINT,
+      config.AZURE_COSMOS_DATABASE
+    );
     return {
       content: [
         { type: "text" as const, text: JSON.stringify(policies, null, 2) },
@@ -738,6 +742,8 @@ async function main() {
     const port = config.MCP_SERVER_PORT;
 
     const httpServer = createServer(async (req, res) => {
+      if (!authenticateRequest(req, res)) return;
+
       // Stateless mode requires a fresh transport per request
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,

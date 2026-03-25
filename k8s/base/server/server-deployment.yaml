@@ -73,6 +73,12 @@ spec:
                   name: agent-warden-server-secrets
                   key: PURVIEW_DLP_CLIENT_SECRET
                   optional: true
+            - name: MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-server-secrets
+                  key: MCP_AUTH_TOKEN
+                  optional: true
           ports:
             - name: mcp
               containerPort: 3000
