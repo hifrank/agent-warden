@@ -82,6 +82,24 @@ data:
           "token": "GATEWAY_TOKEN_PLACEHOLDER"
         }
       },
+      {{- if .Values.channels.telegram.enabled }}
+      "channels": {
+        "telegram": {
+          "enabled": true,
+          "dmPolicy": "pairing",
+          "groupPolicy": "allowlist",
+          "streaming": "off",
+          "accounts": {
+            "default": {
+              "dmPolicy": "pairing",
+              "botToken": "TELEGRAM_BOT_TOKEN_PLACEHOLDER",
+              "groupPolicy": "allowlist",
+              "streaming": "off"
+            }
+          }
+        }
+      },
+      {{- end }}
       {{- if or .Values.purviewDlpPlugin.enabled .Values.agentsViewPlugin.enabled }}
       "plugins": {
         "allow": [
@@ -89,6 +107,7 @@ data:
           {{- if .Values.purviewDlpPlugin.enabled }}{{ $allowList = append $allowList "agent-warden-purview-dlp" }}{{ end }}
           {{- if .Values.agentsViewPlugin.enabled }}{{ $allowList = append $allowList "agent-warden-agents-view" }}{{ end }}
           {{- if .Values.diagnosticsOtel.enabled }}{{ $allowList = append $allowList "diagnostics-otel" }}{{ end }}
+          {{- if .Values.channels.telegram.enabled }}{{ $allowList = append $allowList "telegram" }}{{ end }}
           {{- range $i, $v := $allowList }}{{ if $i }},{{ end }}
           {{ $v | quote }}{{- end }}
         ],

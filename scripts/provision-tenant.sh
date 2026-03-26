@@ -148,6 +148,22 @@ fi
 # ── 5. Get Entra tenant ID ────────────────────────────────
 ENTRA_TENANT_ID=$(az account show --query tenantId -o tsv)
 
+# ── 5b. Sync shared LiteLLM master key to tenant namespace ──
+echo ""
+echo "▶ Step 5b: Sync LiteLLM proxy master key to tenant namespace"
+LITELLM_KEY=$(kubectl get secret -n agent-warden-system litellm-proxy-secret \
+  -o jsonpath='{.data.master-key}' 2>/dev/null || true)
+if [[ -n "$LITELLM_KEY" ]]; then
+  kubectl create secret generic litellm-proxy-key \
+    --namespace "$NAMESPACE" \
+    --from-literal="master-key=$(echo "$LITELLM_KEY" | base64 -d)" \
+    --dry-run=client -o yaml | kubectl apply -f - -o none
+  echo "  ✓ litellm-proxy-key synced from agent-warden-system"
+else
+  echo "  ⚠ litellm-proxy-secret not found in agent-warden-system — skipping"
+  echo "    Create it manually: kubectl create secret generic litellm-proxy-key -n $NAMESPACE --from-literal=master-key=<key>"
+fi
+
 # ── 6. Deploy via Helm ─────────────────────────────────────
 echo ""
 echo "▶ Step 5: Deploy OpenClaw tenant via Helm"
@@ -196,6 +212,6 @@ echo "║  Identity:   $MI_NAME ($MI_CLIENT_ID)                      ║"
 echo "║  Tier:       $TIER                                          ║"
 echo "║                                                             ║"
 echo "║  Next: Add secrets to Key Vault:                            ║"
-echo "║    az keyvault secret set --vault-name $KV_NAME \\          ║"
-echo "║      --name openai-api-key --value 'sk-...'                 ║"
+echo "║    ./scripts/set-tenant-secrets.sh $TENANT_ID               ║"
+echo "║  (includes litellm-master-key, openai-api-key, etc.)       ║"
 echo "╚══════════════════════════════════════════════════════════════╝"

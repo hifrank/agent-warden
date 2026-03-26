@@ -16,6 +16,14 @@ echo "Setting secrets for tenant $TENANT_ID (Key Vault: $KV_NAME)"
 echo "Leave blank to skip a secret."
 echo ""
 
+# LiteLLM Master Key (shared proxy authentication)
+read -rsp "LiteLLM Master Key (sk-litellm-...): " LITELLM_KEY
+echo ""
+if [[ -n "$LITELLM_KEY" ]]; then
+  az keyvault secret set --vault-name "$KV_NAME" --name "litellm-master-key" --value "$LITELLM_KEY" -o none
+  echo "  ✓ litellm-master-key set"
+fi
+
 # OpenAI API Key
 read -rsp "OpenAI API Key: " OPENAI_KEY
 echo ""

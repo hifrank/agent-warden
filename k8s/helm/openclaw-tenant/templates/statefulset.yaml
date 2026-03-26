@@ -59,16 +59,29 @@ spec:
                 # Replace placeholder tokens with real secrets
                 sed -i "s|LITELLM_MASTER_KEY_PLACEHOLDER|${LITELLM_MASTER_KEY}|g" "$TARGET"
                 sed -i "s|GATEWAY_TOKEN_PLACEHOLDER|${GATEWAY_TOKEN}|g" "$TARGET"
+                {{- if .Values.channels.telegram.enabled }}
+                sed -i "s|TELEGRAM_BOT_TOKEN_PLACEHOLDER|${TELEGRAM_BOT_TOKEN}|g" "$TARGET"
+                {{- end }}
                 chown 1000:1000 "$TARGET"
                 echo "openclaw.json seeded successfully"
               fi
           env:
             {{- if .Values.litellmProxy.enabled }}
             - name: LITELLM_MASTER_KEY
-              value: {{ .Values.litellmProxy.masterKey | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-proxy-key
+                  key: master-key
             {{- end }}
             - name: GATEWAY_TOKEN
               value: {{ .Values.gateway.token | quote }}
+            {{- if .Values.channels.telegram.enabled }}
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-{{ .Values.tenantId }}-secrets
+                  key: TELEGRAM_BOT_TOKEN
+            {{- end }}
           volumeMounts:
             - name: state-vol
               mountPath: /data/state
