@@ -17,6 +17,8 @@ data:
           api_base: https://aoai-agentwarden-dev.openai.azure.com/
           api_version: "2024-10-21"
           base_model: "gpt-5.4"
+          stream_options:
+            include_usage: true
 
     litellm_settings:
       drop_params: true

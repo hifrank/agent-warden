@@ -47,13 +47,14 @@ Applied via `kubectl` and Helm:
 ### Demo Tenant
 
 - **Namespace**: `tenant-demo-tenant`
-- **Helm Chart**: `openclaw-tenant` (revision 101)
+- **Helm Chart**: `openclaw-tenant` (revision 107)
 - **Pod**: `openclaw-demo-tenant-0` — StatefulSet, 3/3 containers Running
   - `openclaw-gateway` — OpenClaw 2026.3.12
   - `saas-auth-proxy` — SaaS OAuth proxy
   - `heartbeat` — Gateway health monitoring
 - **LiteLLM**: Shared Deployment in `agent-warden-system` (not per-tenant sidecar)
   - Set `litellmProxy.shared: true` in values file
+  - `stream_options.include_usage: true` required for token telemetry (both shared and sidecar configs)
   - Tenant NetworkPolicy allows egress to `litellm-proxy.agent-warden-system:4000`
 - **Workload Identity**: Federated credential on `mi-demo-tenant`
 - **Key Vault**: `kv-demo-tenant` with tenant secrets
@@ -242,7 +243,7 @@ When `shared: true`:
 14. **LiteLLM image**: Requires `runAsUser: 1000` for `runAsNonRoot` — the default image runs as root.
 15. **Model name matching**: `model_name` in LiteLLM config must match what OpenClaw sends (i.e. `baseModel`), not the Azure deployment name.
 16. **Telegram channel config**: Stored in `openclaw.json` as `channels.telegram.accounts.default.botToken` — this is runtime state NOT managed by Helm. Back up before re-seeding.
-17. **stream_options**: Do NOT set `stream_options.include_usage: true` in LiteLLM model params — causes 400 on non-streaming requests.
+17. **stream_options**: `stream_options.include_usage: true` MUST be set in LiteLLM model params (`litellm_params`) for token counts to appear in the Agents View blade. Without it, OpenClaw receives zero usage from the streamed response and the agents-view plugin emits `gen_ai.usage.input_tokens: 0`.
 18. **Tenant attribution**: In shared mode, tenant ID is resolved by mapping the requester pod IP to a `tenant-*` namespace via K8s API. The callback uses `standard_logging_object.requester_ip_address` and caches results in-memory. Requires `pods:list` RBAC (see `litellm-rbac.yaml`).
 19. **Callback canonical source**: The authoritative callback code lives in the `litellm-proxy-callback` ConfigMap ([litellm-callback.yaml](../k8s/base/litellm/litellm-callback.yaml)). The standalone `custom_callback.py` is a synced copy for reference.
 
