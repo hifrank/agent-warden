@@ -45,8 +45,8 @@ purviewDlpPlugin:
     outputScanner: true
     inputAudit: true
   purviewEnabled: true
-  purviewUserId: "7ade9412-3a6e-4b37-a3a8-51d8f81de596"
-  purviewTenantId: "2cf24558-0d31-439b-9c8d-6fdce3931ae7"
+  purviewUserId: "3ed968e9-98cf-4e61-89f6-3ae3ec61614c"
+  purviewTenantId: "dab94ed2-4cee-4b36-b007-6618f570b4a3"
   image:
     repository: acragentwardendev.azurecr.io/purview-dlp-plugin
     tag: "0.4.0"

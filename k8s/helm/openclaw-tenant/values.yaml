@@ -129,7 +129,7 @@ litellmProxy:
     pullPolicy: IfNotPresent
 
 # -- Purview DLP Plugin (OpenClaw plugin for DLP via Microsoft Purview Graph API)
-# Purview is in E5 tenant "ecardpoc4ecv" (2cf24558-0d31-439b-9c8d-6fdce3931ae7)
+# Purview is in E5 tenant "aprforazure" (dab94ed2-4cee-4b36-b007-6618f570b4a3)
 purviewDlpPlugin:
   enabled: true
   mode: "enforce"           # "enforce" (block/redact) or "audit" (log only)
@@ -139,7 +139,7 @@ purviewDlpPlugin:
     inputAudit: true        # L3: audit inbound user messages via Purview
   purviewEnabled: true      # Enable Purview Graph API (requires Content.Process.All + M365 E5 license)
   purviewUserId: ""         # Entra user ID for app-only auth (managed identity)
-  purviewTenantId: ""       # E5 tenant ID: 2cf24558-0d31-439b-9c8d-6fdce3931ae7
+  purviewTenantId: ""       # E5 tenant ID: dab94ed2-4cee-4b36-b007-6618f570b4a3
   image:
     repository: ghcr.io/agent-warden/purview-dlp-plugin
     tag: "latest"
