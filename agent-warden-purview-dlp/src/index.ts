@@ -424,6 +424,13 @@ function registerInputAudit(
           api.logger.warn(
             `[purview-dlp] L3 Purview BLOCKED inbound: actions=${JSON.stringify(result.actions)}`,
           );
+          if (mode === "enforce") {
+            // Taint the thread so L2b blocks the LLM's outbound response.
+            // message_received cannot prevent the message from reaching the LLM,
+            // but we can ensure the response doesn't leak the sensitive input back.
+            tracker.taint(threadId);
+            api.logger.info(`[purview-dlp] L3 tainted thread ${threadId ?? "default"} — L2b will block outbound`);
+          }
         } else {
           api.logger.info("[purview-dlp] L3 Purview ALLOWED inbound");
         }
@@ -444,7 +451,7 @@ function registerInputAudit(
 export default {
   id: "agent-warden-purview-dlp",
   name: "OpenClaw Purview DLP",
-  version: "0.5.3",
+  version: "0.5.4",
   description:
     "DLP plugin for OpenClaw using Microsoft Purview processContent + protectionScopes Graph API",
 
@@ -468,7 +475,7 @@ export default {
     const purviewCfg = config.purview ?? {};
 
     console.log("[purview-dlp] ============================================");
-    console.log(`[purview-dlp] OpenClaw Purview DLP v0.5.3`);
+    console.log(`[purview-dlp] OpenClaw Purview DLP v0.5.4`);
     console.log(`[purview-dlp] Mode: ${mode} | Streaming: ${mode === "audit" ? "ON (partial)" : "OFF"}`);
     console.log("[purview-dlp] ============================================");
 
@@ -480,7 +487,7 @@ export default {
     try {
       purview = new PurviewClient({
         appName: purviewCfg.appName ?? "OpenClaw",
-        appVersion: purviewCfg.appVersion ?? "0.5.3",
+        appVersion: purviewCfg.appVersion ?? "0.5.4",
         userId: purviewCfg.userId,
         appId: purviewCfg.appId,
         crossTenant: purviewCfg.crossTenant ?? !!process.env.PURVIEW_DLP_TENANT_ID,
