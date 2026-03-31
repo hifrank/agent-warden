@@ -1,7 +1,7 @@
 {
   "id": "agent-warden-purview-dlp",
   "name": "OpenClaw Purview DLP",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "DLP plugin for OpenClaw using Microsoft Purview processContent Graph API. Works with any OpenClaw instance.",
   "configSchema": {
     "type": "object",

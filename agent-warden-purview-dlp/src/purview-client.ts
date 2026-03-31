@@ -411,7 +411,7 @@ export class PurviewClient {
   ): Promise<void> {
     try {
       const token = await this.getToken();
-      const url = `${this.userPath}/dataSecurityAndGovernance/contentActivities`;
+      const url = `${this.userPath}/dataSecurityAndGovernance/activities/contentActivities`;
 
       const body = {
         contentToProcess: {
@@ -419,10 +419,6 @@ export class PurviewClient {
             {
               "@odata.type": "microsoft.graph.processConversationMetadata",
               identifier: crypto.randomUUID(),
-              content: {
-                "@odata.type": "microsoft.graph.textContent",
-                data: text.slice(0, 50_000),
-              },
               name: "Agent Warden DLP audit",
               correlationId: ctx?.correlationId ?? crypto.randomUUID(),
               sequenceNumber: ctx?.sequenceNumber ?? 0,
@@ -433,7 +429,6 @@ export class PurviewClient {
           ],
           activityMetadata: { activity },
           deviceMetadata: {
-            deviceType: "Managed",
             operatingSystemSpecifications: {
               operatingSystemPlatform: "Linux",
               operatingSystemVersion: "AKS",
@@ -443,7 +438,7 @@ export class PurviewClient {
             name: this.cfg.appName,
             version: this.cfg.appVersion,
             applicationLocation: {
-              "@odata.type": "#microsoft.graph.policyLocationApplication",
+              "@odata.type": "microsoft.graph.policyLocationApplication",
               value: this.appLocationValue,
             },
           },
@@ -465,14 +460,22 @@ export class PurviewClient {
 
       if (!resp.ok) {
         const errText = await resp.text().catch(() => "");
-        console.error(`[purview-dlp] contentActivities failed: ${resp.status} ${errText}`);
+        // Only log first failure per 5 minutes to avoid flooding
+        const now = Date.now();
+        if (!this._lastActivityError || now - this._lastActivityError > 300_000) {
+          console.warn(`[purview-dlp] contentActivities failed: ${resp.status} (suppressing repeats for 5m)`);
+          this._lastActivityError = now;
+        }
       } else {
         console.log(`[purview-dlp] contentActivities logged: activity=${activity}`);
+        this._lastActivityError = undefined;
       }
     } catch (err) {
       console.error(`[purview-dlp] contentActivities error: ${err}`);
     }
   }
+
+  private _lastActivityError: number | undefined;
 
   // ── Shared Body Builder ──
 

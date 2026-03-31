@@ -1,6 +1,6 @@
 {
   "name": "openclaw-purview-dlp",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": true,
   "type": "module",
   "openclaw": {

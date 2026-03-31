@@ -237,6 +237,9 @@ function registerOutputScanner(
             api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
           }
 
+          // Log activity to Purview activity explorer (fire-and-forget)
+          purview.logContentActivity(content.slice(0, 50_000), "uploadText", ctx).catch(() => {});
+
           if (!result.allowed) {
             api.logger.warn(`[purview-dlp] L2 Purview BLOCKED tool output: tool=${toolName}`);
             // Taint this thread — the LLM already saw raw content before tool_result_persist.
@@ -257,6 +260,8 @@ function registerOutputScanner(
           purview
             .processContent(content.slice(0, 50_000), "uploadText", ctx)
             .then((result) => {
+              // Log activity to Purview activity explorer
+              purview.logContentActivity(content.slice(0, 50_000), "uploadText", ctx).catch(() => {});
               if (result.errors.length > 0) {
                 api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
               }
@@ -294,6 +299,8 @@ function registerOutputScanner(
 
         try {
           const result = await purview.processContent(content.slice(0, 50_000), "uploadText", ctx);
+          // Log activity to Purview activity explorer
+          purview.logContentActivity(content.slice(0, 50_000), "uploadText", ctx).catch(() => {});
 
           if (result.errors.length > 0) {
             api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
@@ -369,6 +376,9 @@ function registerResponseScanner(
           api.logger.warn(`[purview-dlp] L2b Purview errors: ${result.errors.join(", ")}`);
         }
 
+        // Log activity to Purview activity explorer (fire-and-forget)
+        purview.logContentActivity(content.slice(0, 50_000), "uploadText", ctx).catch(() => {});
+
         if (!result.allowed) {
           api.logger.warn("[purview-dlp] L2b Purview BLOCKED outbound message");
           return {
@@ -420,6 +430,9 @@ function registerInputAudit(
 
       try {
         const result = await purview.processContent(content, "uploadText", ctx);
+        // Log activity to Purview activity explorer (fire-and-forget)
+        purview.logContentActivity(content.slice(0, 50_000), "uploadText", ctx).catch(() => {});
+
         if (!result.allowed) {
           api.logger.warn(
             `[purview-dlp] L3 Purview BLOCKED inbound: actions=${JSON.stringify(result.actions)}`,
@@ -487,7 +500,7 @@ export default {
     try {
       purview = new PurviewClient({
         appName: purviewCfg.appName ?? "OpenClaw",
-        appVersion: purviewCfg.appVersion ?? "0.5.4",
+        appVersion: purviewCfg.appVersion ?? "0.5.5",
         userId: purviewCfg.userId,
         appId: purviewCfg.appId,
         crossTenant: purviewCfg.crossTenant ?? !!process.env.PURVIEW_DLP_TENANT_ID,
