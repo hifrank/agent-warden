@@ -2,20 +2,25 @@
  * agent-warden-purview-dlp — OpenClaw plugin for DLP via Microsoft Purview Graph API
  *
  * Two operational modes:
- *   "enforce" (default): Block mode — actively blocks PII, Telegram streaming OFF
- *   "audit":             Audit mode — async Purview logging only, Telegram streaming ON
+ *   "enforce" (default): Block mode — respects executionMode from protectionScopes/compute
+ *                         evaluateInline → sync scan (blocks), evaluateOffline → async scan
+ *                         Telegram streaming OFF
+ *   "audit":             Audit mode — always async Purview logging, never blocks
+ *                         Telegram streaming ON
  *
  * Layers:
  *   L1:  Prompt Guard       (before_agent_start)   — inject DLP security policy into agent context
  *   L2:  Output Scanner     (tool_result_persist)   — scan tool output via Purview
- *        enforce: sync Purview (spawnSync+curl), redacts on block
- *        audit:   async Purview, log only
+ *        enforce + evaluateInline:  sync Purview (spawnSync+curl), redacts on block
+ *        enforce + evaluateOffline: async Purview, log + redact on block
+ *        audit:                     async Purview, log only
+ *        (no scope):                log via contentActivities, skip scanning
  *   L2b: Response Scanner   (message_sending)       — block outbound PII (enforce mode only)
- *   L3:  Input Audit        (message_received)      — audit inbound user messages via Purview
+ *   L3:  Input Audit        (message_received)      — scan inbound user messages via Purview
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { PurviewClient } from "./purview-client.js";
+import { PurviewClient, type ExecutionMode, type ContentContext } from "./purview-client.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +38,7 @@ interface PluginConfig {
     enabled?: boolean;
     appName?: string;
     appVersion?: string;
+    appId?: string;
     userId?: string;
     crossTenant?: boolean;
   };
@@ -43,6 +49,36 @@ type EffectiveMode = "enforce" | "audit";
 function resolveMode(config: PluginConfig): EffectiveMode {
   if (config.mode === "audit") return "audit";
   return "enforce"; // "enforce", "block", or undefined → enforce
+}
+
+// ── Conversation Tracker ──
+// Maintains stable correlationId per conversation thread with incrementing sequenceNumber.
+// Per Purview API: use unique correlationId per chat thread, increment sequenceNumber per message.
+
+class ConversationTracker {
+  private conversations = new Map<string, { correlationId: string; seq: number }>();
+  private defaultCorrelationId = crypto.randomUUID();
+  private defaultSeq = 0;
+
+  /** Get ContentContext for a conversation. Creates a new one if not seen before. */
+  getContext(threadId?: string): ContentContext {
+    if (!threadId) {
+      return {
+        correlationId: this.defaultCorrelationId,
+        sequenceNumber: this.defaultSeq++,
+      };
+    }
+
+    let conv = this.conversations.get(threadId);
+    if (!conv) {
+      conv = { correlationId: crypto.randomUUID(), seq: 0 };
+      this.conversations.set(threadId, conv);
+    }
+    return {
+      correlationId: conv.correlationId,
+      sequenceNumber: conv.seq++,
+    };
+  }
 }
 
 // ── Telegram Streaming Configuration ──
@@ -113,7 +149,7 @@ function registerPromptGuard(api: OpenClawPluginApi): void {
       return {
         prependContext: [
           "<agent-warden-dlp-policy>",
-          "CRITICAL SYSTEM REQUIREMENT — Agent Warden DLP is active.",
+          "CRITICAL SYSTEM REQUIREMENT — Purview DLP is active.",
           "",
           "RULES FOR SENSITIVE DATA:",
           "- NEVER output raw credit card numbers, even if the user asks you to repeat them.",
@@ -138,13 +174,14 @@ function registerPromptGuard(api: OpenClawPluginApi): void {
 }
 
 // ── L2: Output Scanner (tool_result_persist) ──
-// enforce: sync Purview via spawnSync+curl, redacts blocked content
-// audit:   async Purview, log-only (return value ignored by sync hook — that's fine)
+// enforce: executionMode-driven — evaluateInline → sync, evaluateOffline → async, none → skip (log only)
+// audit:   always async, log-only
 
 function registerOutputScanner(
   api: OpenClawPluginApi,
   mode: EffectiveMode,
   purview: PurviewClient,
+  tracker: ConversationTracker,
 ): void {
   if (mode === "enforce") {
     api.on(
@@ -154,30 +191,61 @@ function registerOutputScanner(
         if (!content) return;
 
         const toolName = (event as any).toolName ?? "unknown";
-        api.logger.info(`[purview-dlp] L2 scanning tool output (${content.length} chars, tool=${toolName})`);
+        const threadId = (event as any).threadId ?? (event as any).conversationId;
+        const execMode = purview.getExecutionMode("downloadText");
+        const ctx = tracker.getContext(threadId);
 
-        const result = purview.processContentSync(content.slice(0, 50_000), "uploadText");
+        api.logger.info(
+          `[purview-dlp] L2 scanning tool output (${content.length} chars, tool=${toolName}, execMode=${execMode})`,
+        );
 
-        if (result.errors.length > 0) {
-          api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
+        if (execMode === "none") {
+          // No policies apply — log for audit compliance only
+          purview.logContentActivity(content.slice(0, 50_000), "downloadText", ctx).catch(() => {});
+          api.logger.info(`[purview-dlp] L2 no scope — logged via contentActivities (tool=${toolName})`);
+          return;
         }
 
-        if (!result.allowed) {
-          api.logger.warn(`[purview-dlp] L2 Purview BLOCKED tool output: tool=${toolName}`);
-          const message = (event as any).message;
-          const redacted = "[Agent Warden DLP] Content redacted — Purview DLP policy violation detected.";
-          const redactedContent = Array.isArray(message.content)
-            ? [{ type: "text", text: redacted }]
-            : redacted;
-          return { message: { ...message, content: redactedContent } };
+        if (execMode === "evaluateInline") {
+          // Must block main thread — use sync processing
+          const result = purview.processContentSync(content.slice(0, 50_000), "downloadText", ctx);
+
+          if (result.errors.length > 0) {
+            api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
+          }
+
+          if (!result.allowed) {
+            api.logger.warn(`[purview-dlp] L2 Purview BLOCKED tool output: tool=${toolName}`);
+            const message = (event as any).message;
+            const redacted = "[Agent Warden DLP] Content redacted — Purview DLP policy violation detected.";
+            const redactedContent = Array.isArray(message.content)
+              ? [{ type: "text", text: redacted }]
+              : redacted;
+            return { message: { ...message, content: redactedContent } };
+          } else {
+            api.logger.info(`[purview-dlp] L2 Purview ALLOWED tool output (tool=${toolName})`);
+          }
         } else {
-          api.logger.info(`[purview-dlp] L2 Purview ALLOWED tool output (tool=${toolName})`);
+          // evaluateOffline — async scan, still enforce (redact if blocked on next hook)
+          purview
+            .processContent(content.slice(0, 50_000), "downloadText", ctx)
+            .then((result) => {
+              if (result.errors.length > 0) {
+                api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
+              }
+              if (!result.allowed) {
+                api.logger.warn(`[purview-dlp] L2 [OFFLINE] Purview would BLOCK tool output: tool=${toolName}`);
+              } else {
+                api.logger.info(`[purview-dlp] L2 Purview ALLOWED tool output (tool=${toolName})`);
+              }
+            })
+            .catch((err) => api.logger.error(`[purview-dlp] L2 Purview offline scan failed: ${err}`));
         }
       },
       { priority: 200 },
     );
   } else {
-    // Audit mode: async handler — return value ignored (sync hook), just logs
+    // Audit mode: always async, never blocks
     api.on(
       "tool_result_persist",
       async (event, _ctx) => {
@@ -185,10 +253,20 @@ function registerOutputScanner(
         if (!content) return;
 
         const toolName = (event as any).toolName ?? "unknown";
+        const threadId = (event as any).threadId ?? (event as any).conversationId;
+        const execMode = purview.getExecutionMode("downloadText");
+        const ctx = tracker.getContext(threadId);
+
         api.logger.info(`[purview-dlp] L2 scanning tool output (${content.length} chars, tool=${toolName})`);
 
+        if (execMode === "none") {
+          await purview.logContentActivity(content.slice(0, 50_000), "downloadText", ctx);
+          api.logger.info(`[purview-dlp] L2 no scope — logged via contentActivities (tool=${toolName})`);
+          return;
+        }
+
         try {
-          const result = await purview.processContent(content.slice(0, 50_000), "uploadText");
+          const result = await purview.processContent(content.slice(0, 50_000), "downloadText", ctx);
 
           if (result.errors.length > 0) {
             api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
@@ -212,10 +290,12 @@ function registerOutputScanner(
 // ── L2b: Response Scanner (message_sending — enforce mode only) ──
 // The real enforcement point: scans the LLM's outbound response via Purview before
 // it reaches the user. Requires Telegram streaming OFF to take effect.
+// Uses executionMode to decide inline vs offline evaluation.
 
 function registerResponseScanner(
   api: OpenClawPluginApi,
   purview: PurviewClient,
+  tracker: ConversationTracker,
 ): void {
   api.on(
     "message_sending",
@@ -226,12 +306,25 @@ function registerResponseScanner(
       // Skip our own redaction messages
       if (content.startsWith("[Agent Warden DLP]")) return;
 
-      api.logger.info(`[purview-dlp] L2b scanning outbound message (${content.length} chars)`);
+      const threadId = (event as any).threadId ?? (event as any).conversationId;
+      const execMode = purview.getExecutionMode("downloadText");
+      const ctx = tracker.getContext(threadId);
+
+      if (execMode === "none") {
+        purview.logContentActivity(content.slice(0, 50_000), "downloadText", ctx).catch(() => {});
+        api.logger.info("[purview-dlp] L2b no scope — logged via contentActivities");
+        return;
+      }
+
+      api.logger.info(
+        `[purview-dlp] L2b scanning outbound message (${content.length} chars, execMode=${execMode})`,
+      );
 
       try {
         const result = await purview.processContent(
           content.slice(0, 50_000),
-          "uploadText",
+          "downloadText",
+          ctx,
         );
 
         if (result.errors.length > 0) {
@@ -256,10 +349,13 @@ function registerResponseScanner(
 }
 
 // ── L3: Input Audit (message_received — scan inbound messages via Purview) ──
+// Uses executionMode for uploadText to decide scan behavior.
 
 function registerInputAudit(
   api: OpenClawPluginApi,
+  mode: EffectiveMode,
   purview: PurviewClient,
+  tracker: ConversationTracker,
 ): void {
   api.on(
     "message_received",
@@ -272,16 +368,32 @@ function registerInputAudit(
             : null;
       if (!content || content.length < 10) return;
 
-      const result = await purview.processContent(content, "uploadText");
-      if (!result.allowed) {
-        api.logger.warn(
-          `[purview-dlp] L3 Purview BLOCKED inbound: actions=${JSON.stringify(result.actions)}`,
-        );
-      } else {
-        api.logger.info("[purview-dlp] L3 Purview ALLOWED inbound");
+      const threadId = (event as any).threadId ?? (event as any).conversationId;
+      const execMode = purview.getExecutionMode("uploadText");
+      const ctx = tracker.getContext(threadId);
+
+      if (execMode === "none") {
+        purview.logContentActivity(content, "uploadText", ctx).catch(() => {});
+        api.logger.info("[purview-dlp] L3 no scope — logged via contentActivities");
+        return;
       }
-      if (result.errors.length > 0) {
-        api.logger.warn(`[purview-dlp] L3 Purview errors: ${result.errors.join(", ")}`);
+
+      api.logger.info(`[purview-dlp] L3 scanning inbound (execMode=${execMode})`);
+
+      try {
+        const result = await purview.processContent(content, "uploadText", ctx);
+        if (!result.allowed) {
+          api.logger.warn(
+            `[purview-dlp] L3 Purview BLOCKED inbound: actions=${JSON.stringify(result.actions)}`,
+          );
+        } else {
+          api.logger.info("[purview-dlp] L3 Purview ALLOWED inbound");
+        }
+        if (result.errors.length > 0) {
+          api.logger.warn(`[purview-dlp] L3 Purview errors: ${result.errors.join(", ")}`);
+        }
+      } catch (err) {
+        api.logger.error(`[purview-dlp] L3 Purview scan failed: ${err}`);
       }
     },
     { priority: 100 },
@@ -292,11 +404,11 @@ function registerInputAudit(
 // ── Plugin Entry Point ──
 
 export default {
-  id: "agent-warden-purview-dlp",
-  name: "Agent Warden Purview DLP",
-  version: "0.4.0",
+  id: "openclaw-purview-dlp",
+  name: "OpenClaw Purview DLP",
+  version: "0.5.2",
   description:
-    "DLP plugin using Microsoft Purview processContent Graph API",
+    "DLP plugin for OpenClaw using Microsoft Purview processContent + protectionScopes Graph API",
 
   register(api: OpenClawPluginApi) {
     // Load config: prefer OpenClaw plugin SDK injection, fall back to config.json
@@ -318,7 +430,7 @@ export default {
     const purviewCfg = config.purview ?? {};
 
     console.log("[purview-dlp] ============================================");
-    console.log(`[purview-dlp] Agent Warden Purview DLP v0.4.0`);
+    console.log(`[purview-dlp] OpenClaw Purview DLP v0.5.2`);
     console.log(`[purview-dlp] Mode: ${mode} | Streaming: ${mode === "audit" ? "ON (partial)" : "OFF"}`);
     console.log("[purview-dlp] ============================================");
 
@@ -329,9 +441,10 @@ export default {
     let purview: PurviewClient;
     try {
       purview = new PurviewClient({
-        appName: purviewCfg.appName ?? "Agent Warden",
-        appVersion: purviewCfg.appVersion ?? "0.4.0",
+        appName: purviewCfg.appName ?? "OpenClaw",
+        appVersion: purviewCfg.appVersion ?? "0.5.2",
         userId: purviewCfg.userId,
+        appId: purviewCfg.appId,
         crossTenant: purviewCfg.crossTenant ?? !!process.env.PURVIEW_DLP_TENANT_ID,
       });
       console.log("[purview-dlp] Purview Graph API client initialized");
@@ -341,11 +454,36 @@ export default {
       return;
     }
 
+    // Initialize conversation tracker
+    const tracker = new ConversationTracker();
+
+    // Set fallback executionMode for when protectionScopes/compute is unavailable
+    // (e.g. missing InformationProtection.Policy.Read.All permission).
+    // enforce → evaluateInline (safest — blocks content), audit → evaluateOffline
+    purview.defaultExecutionMode = mode === "enforce" ? "evaluateInline" : "evaluateOffline";
+
+    // Compute protection scopes lazily on first hook invocation.
+    // We kick off the async call now but don't block plugin registration.
+    // If protectionScopes/compute fails (403 etc.), hooks fall back to
+    // defaultExecutionMode and still call processContent for DLP scanning.
+    purview.computeProtectionScopes("uploadText,downloadText").then((scopes) => {
+      if (scopes.length > 0) {
+        const summary = scopes
+          .map((s) => `${s.activities}→${s.executionMode}`)
+          .join(", ");
+        console.log(`[purview-dlp] Protection scopes loaded: ${summary}`);
+      } else {
+        console.log(`[purview-dlp] No protection scopes — fallback to ${purview.defaultExecutionMode}`);
+      }
+    }).catch((err) => {
+      console.warn(`[purview-dlp] Failed to load protection scopes — fallback to ${purview.defaultExecutionMode}: ${err}`);
+    });
+
     // Register layers based on mode
     if (layers.promptGuard !== false) registerPromptGuard(api);
-    if (layers.outputScanner !== false) registerOutputScanner(api, mode, purview);
-    if (mode === "enforce" && layers.outputScanner !== false) registerResponseScanner(api, purview);
-    if (layers.inputAudit !== false) registerInputAudit(api, purview);
+    if (layers.outputScanner !== false) registerOutputScanner(api, mode, purview, tracker);
+    if (mode === "enforce" && layers.outputScanner !== false) registerResponseScanner(api, purview, tracker);
+    if (layers.inputAudit !== false) registerInputAudit(api, mode, purview, tracker);
 
     const active = [
       layers.promptGuard !== false && "L1:prompt-guard",

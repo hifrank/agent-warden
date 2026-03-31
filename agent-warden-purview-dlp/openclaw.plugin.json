@@ -1,8 +1,8 @@
 {
-  "id": "agent-warden-purview-dlp",
-  "name": "Agent Warden Purview DLP",
-  "version": "0.3.0",
-  "description": "DLP plugin for OpenClaw using Microsoft Purview processContent Graph API.",
+  "id": "openclaw-purview-dlp",
+  "name": "OpenClaw Purview DLP",
+  "version": "0.5.2",
+  "description": "DLP plugin for OpenClaw using Microsoft Purview processContent Graph API. Works with any OpenClaw instance.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -27,8 +27,8 @@
         "additionalProperties": false,
         "properties": {
           "enabled": { "type": "boolean", "default": true },
-          "appName": { "type": "string", "default": "Agent Warden" },
-          "appVersion": { "type": "string", "default": "0.3.0" },
+          "appName": { "type": "string", "default": "OpenClaw", "description": "Application name reported to Purview. Set to your app's name." },
+          "appVersion": { "type": "string", "default": "0.5.2" },
           "userId": { "type": "string", "description": "Entra user ID (Object ID) in the Purview tenant. Required for app-only auth." },
           "crossTenant": { "type": "boolean", "default": false, "description": "Set true when Purview is in a different tenant." }
         }

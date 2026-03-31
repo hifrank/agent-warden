@@ -2,9 +2,9 @@
 # E2E test: call Purview processContent API via cross-tenant credentials
 set -euo pipefail
 
-E5_TENANT="8cbe524f-4297-47b4-ad3a-d04b4c850249"
-CLIENT_ID="d94c93dd-3c80-4f3d-9671-8b71a7dccafa"
-USER_ID="157c590c-24f0-4e90-af64-fef68dbb8777"
+E5_TENANT="${PURVIEW_DLP_TENANT_ID:?Set PURVIEW_DLP_TENANT_ID}"
+CLIENT_ID="${PURVIEW_DLP_CLIENT_ID:?Set PURVIEW_DLP_CLIENT_ID}"
+USER_ID="${PURVIEW_DLP_USER_ID:?Set PURVIEW_DLP_USER_ID}"
 
 # Get secret from pod
 CLIENT_SECRET=$(kubectl exec -n tenant-demo-tenant openclaw-demo-tenant-0 -c openclaw-gateway -- printenv PURVIEW_DLP_CLIENT_SECRET 2>/dev/null)
@@ -23,7 +23,7 @@ echo "   OK — token acquired"
 
 echo "2. Calling processContent API with sensitive data..."
 BODY=$(python3 -c "
-import json, uuid, datetime
+import json, uuid, datetime, os
 print(json.dumps({
   'contentToProcess': {
     'contentEntries': [{
@@ -53,7 +53,7 @@ print(json.dumps({
       'version': '0.1.0',
       'applicationLocation': {
         '@odata.type': '#microsoft.graph.policyLocationApplication',
-        'value': 'd94c93dd-3c80-4f3d-9671-8b71a7dccafa'
+        'value': os.environ.get('PURVIEW_DLP_CLIENT_ID', '')
       }
     },
     'integratedAppMetadata': {

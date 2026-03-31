@@ -1,6 +1,6 @@
 {
-  "name": "agent-warden-purview-dlp",
-  "version": "0.1.0",
+  "name": "openclaw-purview-dlp",
+  "version": "0.5.2",
   "private": true,
   "type": "module",
   "openclaw": {
