@@ -60,6 +60,27 @@ class ConversationTracker {
   private defaultCorrelationId = crypto.randomUUID();
   private defaultSeq = 0;
 
+  // Taint tracking: when L2 blocks a tool result on tool_result_persist,
+  // the LLM has already seen the raw content (the hook only modifies persistence).
+  // L2b must block the outbound response for any tainted thread.
+  private taintedThreads = new Set<string>();
+  private defaultTainted = false;
+
+  taint(threadId?: string): void {
+    if (threadId) this.taintedThreads.add(threadId);
+    else this.defaultTainted = true;
+  }
+
+  isTainted(threadId?: string): boolean {
+    if (threadId) return this.taintedThreads.has(threadId);
+    return this.defaultTainted;
+  }
+
+  clearTaint(threadId?: string): void {
+    if (threadId) this.taintedThreads.delete(threadId);
+    else this.defaultTainted = false;
+  }
+
   /** Get ContentContext for a conversation. Creates a new one if not seen before. */
   getContext(threadId?: string): ContentContext {
     if (!threadId) {
@@ -176,6 +197,8 @@ function registerPromptGuard(api: OpenClawPluginApi): void {
 // ── L2: Output Scanner (tool_result_persist) ──
 // enforce: executionMode-driven — evaluateInline → sync, evaluateOffline → async, none → skip (log only)
 // audit:   always async, log-only
+// NOTE: Uses uploadText activity because Entra enforcement plane does not support
+//       downloadText restrictions. The DLP policy evaluates content identically.
 
 function registerOutputScanner(
   api: OpenClawPluginApi,
@@ -192,7 +215,7 @@ function registerOutputScanner(
 
         const toolName = (event as any).toolName ?? "unknown";
         const threadId = (event as any).threadId ?? (event as any).conversationId;
-        const execMode = purview.getExecutionMode("downloadText");
+        const execMode = purview.getExecutionMode("uploadText");
         const ctx = tracker.getContext(threadId);
 
         api.logger.info(
@@ -201,14 +224,14 @@ function registerOutputScanner(
 
         if (execMode === "none") {
           // No policies apply — log for audit compliance only
-          purview.logContentActivity(content.slice(0, 50_000), "downloadText", ctx).catch(() => {});
+          purview.logContentActivity(content.slice(0, 50_000), "uploadText", ctx).catch(() => {});
           api.logger.info(`[purview-dlp] L2 no scope — logged via contentActivities (tool=${toolName})`);
           return;
         }
 
         if (execMode === "evaluateInline") {
           // Must block main thread — use sync processing
-          const result = purview.processContentSync(content.slice(0, 50_000), "downloadText", ctx);
+          const result = purview.processContentSync(content.slice(0, 50_000), "uploadText", ctx);
 
           if (result.errors.length > 0) {
             api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
@@ -216,6 +239,10 @@ function registerOutputScanner(
 
           if (!result.allowed) {
             api.logger.warn(`[purview-dlp] L2 Purview BLOCKED tool output: tool=${toolName}`);
+            // Taint this thread — the LLM already saw raw content before tool_result_persist.
+            // L2b will block the outbound response for this thread.
+            tracker.taint(threadId);
+            api.logger.info(`[purview-dlp] L2 tainted thread ${threadId ?? "default"} — L2b will block outbound`);
             const message = (event as any).message;
             const redacted = "[Agent Warden DLP] Content redacted — Purview DLP policy violation detected.";
             const redactedContent = Array.isArray(message.content)
@@ -228,7 +255,7 @@ function registerOutputScanner(
         } else {
           // evaluateOffline — async scan, still enforce (redact if blocked on next hook)
           purview
-            .processContent(content.slice(0, 50_000), "downloadText", ctx)
+            .processContent(content.slice(0, 50_000), "uploadText", ctx)
             .then((result) => {
               if (result.errors.length > 0) {
                 api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
@@ -254,19 +281,19 @@ function registerOutputScanner(
 
         const toolName = (event as any).toolName ?? "unknown";
         const threadId = (event as any).threadId ?? (event as any).conversationId;
-        const execMode = purview.getExecutionMode("downloadText");
+        const execMode = purview.getExecutionMode("uploadText");
         const ctx = tracker.getContext(threadId);
 
         api.logger.info(`[purview-dlp] L2 scanning tool output (${content.length} chars, tool=${toolName})`);
 
         if (execMode === "none") {
-          await purview.logContentActivity(content.slice(0, 50_000), "downloadText", ctx);
+          await purview.logContentActivity(content.slice(0, 50_000), "uploadText", ctx);
           api.logger.info(`[purview-dlp] L2 no scope — logged via contentActivities (tool=${toolName})`);
           return;
         }
 
         try {
-          const result = await purview.processContent(content.slice(0, 50_000), "downloadText", ctx);
+          const result = await purview.processContent(content.slice(0, 50_000), "uploadText", ctx);
 
           if (result.errors.length > 0) {
             api.logger.warn(`[purview-dlp] L2 Purview errors: ${result.errors.join(", ")}`);
@@ -307,11 +334,22 @@ function registerResponseScanner(
       if (content.startsWith("[Agent Warden DLP]")) return;
 
       const threadId = (event as any).threadId ?? (event as any).conversationId;
-      const execMode = purview.getExecutionMode("downloadText");
+
+      // Taint check: if L2 blocked a tool result in this thread, the LLM already saw raw
+      // content (tool_result_persist fires after LLM context injection). Block unconditionally.
+      if (tracker.isTainted(threadId)) {
+        api.logger.warn(`[purview-dlp] L2b BLOCKED outbound — thread tainted by L2 block`);
+        tracker.clearTaint(threadId);
+        return {
+          content: "[Agent Warden DLP] Response blocked — the tool output contained sensitive data detected by Purview DLP policy.",
+        };
+      }
+
+      const execMode = purview.getExecutionMode("uploadText");
       const ctx = tracker.getContext(threadId);
 
       if (execMode === "none") {
-        purview.logContentActivity(content.slice(0, 50_000), "downloadText", ctx).catch(() => {});
+        purview.logContentActivity(content.slice(0, 50_000), "uploadText", ctx).catch(() => {});
         api.logger.info("[purview-dlp] L2b no scope — logged via contentActivities");
         return;
       }
@@ -323,7 +361,7 @@ function registerResponseScanner(
       try {
         const result = await purview.processContent(
           content.slice(0, 50_000),
-          "downloadText",
+          "uploadText",
           ctx,
         );
 
@@ -404,9 +442,9 @@ function registerInputAudit(
 // ── Plugin Entry Point ──
 
 export default {
-  id: "openclaw-purview-dlp",
+  id: "agent-warden-purview-dlp",
   name: "OpenClaw Purview DLP",
-  version: "0.5.2",
+  version: "0.5.3",
   description:
     "DLP plugin for OpenClaw using Microsoft Purview processContent + protectionScopes Graph API",
 
@@ -430,7 +468,7 @@ export default {
     const purviewCfg = config.purview ?? {};
 
     console.log("[purview-dlp] ============================================");
-    console.log(`[purview-dlp] OpenClaw Purview DLP v0.5.2`);
+    console.log(`[purview-dlp] OpenClaw Purview DLP v0.5.3`);
     console.log(`[purview-dlp] Mode: ${mode} | Streaming: ${mode === "audit" ? "ON (partial)" : "OFF"}`);
     console.log("[purview-dlp] ============================================");
 
@@ -442,7 +480,7 @@ export default {
     try {
       purview = new PurviewClient({
         appName: purviewCfg.appName ?? "OpenClaw",
-        appVersion: purviewCfg.appVersion ?? "0.5.2",
+        appVersion: purviewCfg.appVersion ?? "0.5.3",
         userId: purviewCfg.userId,
         appId: purviewCfg.appId,
         crossTenant: purviewCfg.crossTenant ?? !!process.env.PURVIEW_DLP_TENANT_ID,
