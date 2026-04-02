@@ -41,7 +41,7 @@ Applied via `kubectl` and Helm:
 |-------|-----|--------|
 | `openclaw` | `2026.3.12` | Imported from `alpine/openclaw:2026.3.12` |
 | `agent-warden-saas-proxy` | `latest` | Built from `agent-warden-saas-proxy/` |
-| `purview-dlp-plugin` | `0.4.0` | Built from `agent-warden-purview-dlp/` |
+| `purview-dlp-plugin` | `0.5.5` | Built from `agent-warden-purview-dlp/` |
 | `agent-warden-operator` | `latest` | Built from `k8s/operator/` |
 
 ### Demo Tenant
@@ -174,7 +174,7 @@ az aks update -g rg-agentwarden-dev -n aks-agentwarden-dev \
 
 ```bash
 # Build and push to ACR (from component directory)
-az acr build --registry acragentwardendev --image purview-dlp-plugin:0.3.0 agent-warden-purview-dlp/
+az acr build --registry acragentwardendev --image purview-dlp-plugin:0.5.5 agent-warden-purview-dlp/
 
 # Restart pods to pull new image (pullPolicy: Always)
 kubectl rollout restart statefulset/openclaw-demo-tenant -n tenant-demo-tenant

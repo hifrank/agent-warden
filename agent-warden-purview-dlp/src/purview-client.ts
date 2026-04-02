@@ -74,6 +74,13 @@ export class PurviewClient {
   private scopesFailed = false;
   /** Fallback executionMode when protectionScopes/compute is unavailable (e.g. missing permission). */
   defaultExecutionMode: ExecutionMode = "evaluateInline";
+  /**
+   * TODO: Re-enable when Purview contentActivities API is stable.
+   * As of 2026-04-02, the API returns HTTP 500 (service-side bug) despite correct
+   * permissions (ContentActivity.Write granted + admin-consented) and docs-exact body.
+   * Tracked: https://learn.microsoft.com/en-us/graph/api/activitiescontainer-post-contentactivities
+   */
+  contentActivitiesEnabled = false;
 
   constructor(cfg: PurviewConfig, credential?: TokenCredential) {
     this.cfg = cfg;
@@ -409,6 +416,7 @@ export class PurviewClient {
     activity: "uploadText" | "downloadText",
     ctx?: ContentContext,
   ): Promise<void> {
+    if (!this.contentActivitiesEnabled) return;
     try {
       const token = await this.getToken();
       const url = `${this.userPath}/dataSecurityAndGovernance/activities/contentActivities`;

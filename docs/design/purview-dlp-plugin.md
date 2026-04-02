@@ -1,9 +1,9 @@
 # Purview DLP Plugin — Cross-Tenant Architecture
 
 > **Status:** Validated (E2E tested)  
-> **Date:** 2026-03-17 (updated from 2025-07-12)  
-> **Version:** v0.4.0  
-> **Depends on:** OpenClaw v2026.3.12 plugin hooks, Microsoft Purview processContent API (GA)
+> **Date:** 2026-04-02 (updated from 2026-03-17)  
+> **Version:** v0.5.5  
+> **Depends on:** OpenClaw v2026.3.12 plugin hooks, Microsoft Purview processContent + protectionScopes + contentActivities APIs (GA)
 
 ---
 
@@ -26,8 +26,8 @@ Scan all content flowing through OpenClaw (user input, LLM output, tool results)
 
 | Mode | Streaming | L2 Behavior | L2b | Use Case |
 |------|-----------|-------------|-----|----------|
-| **`enforce`** (default) | OFF | Sync Purview (`spawnSync`+`curl`), redacts on block | Active — blocks outbound PII | Production |
-| **`audit`** | ON (partial) | Async Purview, log only | Not registered | Monitoring |
+| **`enforce`** (default) | OFF | executionMode-driven: evaluateInline → sync (`spawnSync`+`curl`), evaluateOffline → async, none → contentActivities log only | Active — blocks outbound PII + taint tracking | Production |
+| **`audit`** | ON (partial) | Always async Purview, log only; no scope → contentActivities | Not registered | Monitoring |
 
 ---
 
@@ -121,15 +121,15 @@ From the OpenClaw v2026.3.12 gateway binary analysis, these hooks are relevant f
 
 | Hook | Execution | Can Modify/Block? | v0.4.0 Use | Notes |
 |------|-----------|-------------------|------------|-------|
-| `message_received` | async, parallel | No (void) | **L3: Input Audit** | Cannot block delivery |
+| `message_received` | async, parallel | No (void) | **L3: Input Audit** | Cannot block delivery; taints thread in enforce mode |
 | `before_agent_start` | async, sequential | Yes: `{ prependContext }` | **L1: Prompt Guard** | Injects DLP system policy |
-| `tool_result_persist` | **SYNC**, sequential | Yes: `{ message }` | **L2: Output Scanner** | Enforce: sync `spawnSync`+`curl`. Audit: async (return ignored) |
-| `message_sending` | async, sequential (`runModifyingHook`) | Yes: `{ content, cancel }` | **L2b: Response Scanner** | Enforce only. **Bypassed by Telegram streaming preview** |
+| `tool_result_persist` | **SYNC**, sequential | Yes: `{ message }` | **L2: Output Scanner** | executionMode-driven: evaluateInline → sync, evaluateOffline → async, none → contentActivities |
+| `message_sending` | async, sequential (`runModifyingHook`) | Yes: `{ content, cancel }` | **L2b: Response Scanner** | Enforce only. Checks taint from L2/L3. **Bypassed by Telegram streaming preview** |
 | `before_tool_call` | async, sequential | Yes: `{ block, blockReason }` | — (future L5) | Tool gating after DLP violations |
 
 > **Critical discovery:** `message_sending` fires via `deliverOutboundPayloadsCore` but is **bypassed** by Telegram's streaming path (`deliverReplies` → `editMessageTelegram`). Enforce mode must set `streaming: "off"` for L2b to work.
 
-### 3.2 v0.4.0 Layer Architecture (Implemented)
+### 3.2 v0.5.5 Layer Architecture (Implemented)
 
 ```
 User sends message via Telegram
@@ -154,12 +154,15 @@ User sends message via Telegram
 │         │                                                    │
 │         ▼                                                    │
 │   L2: Output Scanner (tool_result_persist)  ─► Purview API   │
-│   • enforce: spawnSync+curl (SYNC) → redact  (uploadText)    │
+│   • enforce+evaluateInline: spawnSync+curl (SYNC) → redact   │
+│   • enforce+evaluateOffline: async scan, log+redact          │
+│   • enforce+none: log via contentActivities, skip scan       │
 │   • audit: async log only (return ignored)                   │
 │         │                                                    │
 │         ▼                                                    │
 │   L2b: Response Scanner (message_sending)  ──► Purview API   │
 │   • enforce only (requires streaming OFF)    (uploadText)    │
+│   • Checks L2/L3 taint — blocks if thread tainted           │
 │   • Replaces outbound PII with DLP notice                    │
 │   • Skips own "[Agent Warden DLP]" messages                  │
 │         │                                                    │
@@ -168,7 +171,7 @@ User sends message via Telegram
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 3.3 Layer Details (v0.4.0 — Implemented)
+### 3.3 Layer Details (v0.5.5 — Implemented)
 
 #### L1: Prompt Guard (`before_agent_start` — async, sequential, modifying)
 
@@ -179,21 +182,27 @@ User sends message via Telegram
 - **Returns:** `{ prependContext: string }`
 - **Always active** regardless of Purview availability
 
-#### L2: Output Scanner (`tool_result_persist` — **SYNC** in enforce, async in audit)
+#### L2: Output Scanner (`tool_result_persist` — executionMode-driven)
 
 - **When:** Before persisting a tool's result into conversation history
-- **Enforce mode:** Synchronous handler calls `processContentSync()` which uses `spawnSync('curl', ...)` to make a blocking HTTP call to Purview. If Purview returns `restrictAccess`, the tool output is replaced with `[Agent Warden DLP] Content redacted`. The sync approach is required because this hook ignores async return values.
-- **Audit mode:** Async handler calls `processContent()` via `fetch`. Return value is ignored (sync hook warning logged). Logs `would BLOCK` for violations.
-- **Purview activity:** `uploadText`
-- **Returns (enforce):** `{ message: redactedMessage }` (synchronously)
+- **executionMode resolution:** Calls `purview.getExecutionMode("uploadText")` against cached `protectionScopes/compute` results:
+  - **`evaluateInline`**: Synchronous handler calls `processContentSync()` using `spawnSync('curl', ...)` for a blocking HTTP call. If Purview returns `restrictAccess`, replaces tool output with `[Agent Warden DLP] Content redacted`. Taints thread for L2b.
+  - **`evaluateOffline`**: Async handler calls `processContent()` via `fetch`. Logs `would BLOCK` for violations (enforce mode) or logs only (audit mode).
+  - **`none`** (no scopes apply): Logs activity via `contentActivities` API for audit compliance. Skips DLP scanning.
+- **Taint tracking:** On block, taints the conversation thread. L2b will block the outbound response unconditionally for tainted threads (since the LLM already saw raw content before `tool_result_persist` fires).
+- **Purview activity:** `uploadText` (both processContent and contentActivities)
+- **Returns (enforce+inline):** `{ message: redactedMessage }` (synchronously)
 - **Content extraction:** Handles string content, `[{type: "text", text: "..."}]` arrays, and raw message objects
 
 #### L2b: Response Scanner (`message_sending` — async, sequential, modifying) — **Enforce only**
 
 - **When:** Before sending an LLM response to the user via Telegram
-- **Action:** Purview `processContent(content, "uploadText")` on the outbound message
-- **Enforcement:** If Purview returns `restrictAccess` or `block`: replaces `content` with `[Agent Warden DLP] Response blocked — sensitive information detected by Purview DLP policy.`
-- **Skip condition:** Messages starting with `[Agent Warden DLP]` are skipped to avoid re-scanning own redaction notices
+- **Taint check:** If L2 or L3 tainted this thread, blocks **unconditionally** without calling Purview (the raw content already reached the LLM). Clears taint after blocking.
+- **executionMode resolution:** If not tainted, resolves executionMode for `uploadText`:
+  - **`none`**: Logs via `contentActivities` API, passes through
+  - Otherwise: Calls `processContent()` via async fetch
+- **Enforcement:** If Purview returns `restrictAccess` or `block`: replaces `content` with DLP block notice
+- **Skip condition:** Messages starting with `[Agent Warden DLP]` are skipped
 - **Purview activity:** `uploadText`
 - **Returns:** `{ content: "..blocked.." }` or `undefined` (passthrough)
 - **CRITICAL:** Only fires when Telegram streaming is OFF. The `message_sending` hook is dispatched via `deliverOutboundPayloadsCore` which is **bypassed** by Telegram's streaming preview path (`deliverReplies` → `editMessageTelegram`). The plugin auto-sets `streaming: "off"` in enforce mode.
@@ -202,8 +211,9 @@ User sends message via Telegram
 #### L3: Input Audit (`message_received` — async, void, parallel)
 
 - **When:** Every inbound user message
-- **Action:** Purview `processContent(content, "uploadText")`
+- **executionMode resolution:** Same as L2 — `none` → contentActivities log only
 - **Enforcement:** Cannot block (void hook). Logs BLOCKED/ALLOWED for audit trail
+- **Taint tracking (v0.5.5):** In enforce mode, if Purview returns blocked, **taints the thread** so L2b will block the outbound response. This prevents the LLM from echoing sensitive user input back.
 - **Purview activity:** `uploadText`
 - **Always active** in both enforce and audit modes
 
@@ -213,16 +223,61 @@ User sends message via Telegram
 
 ---
 
-## 4. processContent API Integration
+## 4. Purview Graph API Integration
 
-### 4.1 API Endpoint
+The plugin uses three Purview Data Security and Governance APIs:
+
+| API | Purpose | When Called |
+|-----|---------|-------------|
+| `protectionScopes/compute` | Determine which activities need inline vs offline evaluation | Plugin startup + cached 60min |
+| `processContent` | Evaluate content against DLP policies | L2, L2b, L3 when executionMode ≠ none |
+| `contentActivities` | Log activity for audit/anomaly detection | All layers when executionMode = none |
+
+> **Purview Audit Trail:** These API calls generate **"AI Interaction" / "Connected AI App Interaction"** entries in the Purview Activity Explorer automatically.
+
+### 4.1 API Endpoints
 
 ```
-POST https://graph.microsoft.com/v1.0/users/{userId}/dataSecurityAndGovernance/processContent
+POST /users/{userId}/dataSecurityAndGovernance/protectionScopes/compute
+POST /users/{userId}/dataSecurityAndGovernance/processContent
+POST /users/{userId}/dataSecurityAndGovernance/activities/contentActivities
 ```
 
+Base: `https://graph.microsoft.com/v1.0`
 - `{userId}`: An E5-licensed user's Object ID in the E5 tenant
 - Auth: Bearer token from E5 tenant app registration
+
+### 4.1.1 protectionScopes/compute
+
+Determines which activities require inline vs offline DLP evaluation for the given application location.
+
+```jsonc
+// Request
+{
+  "activities": "uploadText,downloadText",
+  "locations": [
+    {
+      "@odata.type": "microsoft.graph.policyLocationApplication",
+      "value": "<APP_CLIENT_ID>"
+    }
+  ]
+}
+
+// Response
+{
+  "value": [
+    {
+      "activities": "uploadText,downloadText",
+      "executionMode": "evaluateInline",  // or "evaluateOffline"
+      "policyActions": [...]
+    }
+  ]
+}
+```
+
+- Cached for 60 minutes (per API recommendation)
+- Returns ETag header — passed as `If-None-Match` in subsequent `processContent` calls
+- Response includes `protectionScopeState: "modified"` when policies change → triggers cache invalidation
 
 ### 4.2 Request Body
 
@@ -257,7 +312,7 @@ POST https://graph.microsoft.com/v1.0/users/{userId}/dataSecurityAndGovernance/p
     },
     "protectedAppMetadata": {
       "name": "Agent Warden",
-      "version": "0.2.0",
+      "version": "0.5.5",
       "applicationLocation": {
         "@odata.type": "#microsoft.graph.policyLocationApplication",
         "value": "<APP_CLIENT_ID>"
@@ -265,11 +320,13 @@ POST https://graph.microsoft.com/v1.0/users/{userId}/dataSecurityAndGovernance/p
     },
     "integratedAppMetadata": {
       "name": "Agent Warden",
-      "version": "0.2.0"
+      "version": "0.5.5"
     }
   }
 }
 ```
+
+**Conversation context (v0.5.5):** Each call includes a `correlationId` (unique per chat thread) and incrementing `sequenceNumber` (per message in thread). The `ConversationTracker` class maintains these across the conversation lifecycle.
 
 ### 4.3 Response
 
@@ -280,7 +337,8 @@ POST https://graph.microsoft.com/v1.0/users/{userId}/dataSecurityAndGovernance/p
     { "action": "restrictAccess", "restrictionAction": "block" },
     { "action": "restrictWebGrounding" }
   ],
-  "processingErrors": []
+  "processingErrors": [],
+  "protectionScopeState": "unchanged"  // or "modified" → invalidate scope cache
 }
 ```
 
@@ -288,8 +346,20 @@ POST https://graph.microsoft.com/v1.0/users/{userId}/dataSecurityAndGovernance/p
 
 | Activity | Direction | Used In |
 |----------|-----------|---------|
-| `uploadText` | User → Agent (inbound) | L1 (input scan) |
-| `downloadText` | Agent → User (outbound) | L4 (output enforcement) |
+| `uploadText` | User → Agent (inbound) | L2, L2b, L3 (all layers use uploadText — see note) |
+| `downloadText` | Agent → User (outbound) | Reserved (not currently used — Entra enforcement plane does not support downloadText restrictions) |
+
+> **Note (v0.5.5):** All layers use `uploadText` because the Entra enforcement plane does not support `downloadText` restrictions. The DLP policy evaluates content identically regardless of activity type.
+
+### 4.4.1 contentActivities API (v0.5.5)
+
+When `executionMode = "none"` (no protection scopes apply), activities are still logged via the `contentActivities` endpoint for audit compliance and anomaly detection:
+
+```
+POST /users/{userId}/dataSecurityAndGovernance/activities/contentActivities
+```
+
+The request body is similar to `processContent` but omits the `content.data` field (metadata only). This generates audit records in Purview Activity Explorer without performing DLP evaluation.
 
 ### 4.5 Error Handling
 
@@ -306,18 +376,20 @@ POST https://graph.microsoft.com/v1.0/users/{userId}/dataSecurityAndGovernance/p
 
 | Optimization | Description |
 |-------------|-------------|
-| **Content hash cache** | Cache `processContent` result by SHA-256(content) for 60s. Avoids re-scanning identical content |
+| **Protection scope caching** | Cache `protectionScopes/compute` result for 60 minutes with ETag. Avoids redundant scope lookups |
+| **executionMode routing** | Skip `processContent` entirely when `executionMode = "none"` — log via lightweight `contentActivities` instead |
 | **Size threshold** | Skip Purview for content < 10 chars (too short to contain sensitive data) |
 | **Truncation** | Truncate content > 50KB (API limit). Set `isTruncated: true` |
-| **Local pre-screen** | Only call Purview if local regex detects potential sensitive data (optional, reduces API calls but may miss ML-detected patterns) |
 | **Token caching** | Cache access token until 60s before expiry |
+| **ETag propagation** | Pass cached scope ETag in `If-None-Match` header on `processContent` calls |
+| **protectionScopeState** | When `processContent` returns `protectionScopeState: "modified"`, invalidate scope cache and re-compute on next call |
 | **Batching** | Future: batch multiple content entries in a single `processContent` call via the `contentEntries` array |
 
 ---
 
 ## 5. Plugin Configuration
 
-### 5.1 Plugin `config.json` Schema (v0.4.0)
+### 5.1 Plugin `config.json` Schema (v0.5.5)
 
 ```jsonc
 {
@@ -330,8 +402,9 @@ POST https://graph.microsoft.com/v1.0/users/{userId}/dataSecurityAndGovernance/p
   "purview": {
     "enabled": true,
     "appName": "Agent Warden",
-    "appVersion": "0.4.0",
+    "appVersion": "0.5.5",
     "userId": "<E5-licensed-user-object-id>",
+    "appId": "<Entra-app-registration-client-id>",  // Used for policyLocationApplication
     "crossTenant": true
   }
 }
@@ -352,9 +425,16 @@ purviewDlpPlugin:
   purviewTenantId: "2cf24558-0d31-439b-9c8d-6fdce3931ae7"
   image:
     repository: acragentwardendev.azurecr.io/purview-dlp-plugin
-    tag: "0.4.0"
+    tag: "0.5.5"
     pullPolicy: Always
 ```
+
+### 5.3 Required API Permissions (v0.5.5)
+
+| Permission | Type | Used By |
+|------------|------|--------|
+| `InformationProtectionPolicy.Read.All` | Application | `protectionScopes/compute` |
+| `Content.DLP.Process.All` | Application | `processContent`, `contentActivities` |
 
 ---
 
@@ -406,14 +486,17 @@ Key Vault (kv-demo-tenant)           AKS Pod
 
 ---
 
-## 7. Data Flow — Full Request Lifecycle (v0.4.0 Enforce Mode)
+## 7. Data Flow — Full Request Lifecycle (v0.5.5 Enforce Mode)
 
 ```
 User sends message via Telegram (streaming OFF)
          │
          ▼
 L3: message_received (async, void)
+    ├─ Resolve executionMode via protectionScopes cache
+    ├─ none → log via contentActivities, skip scan
     ├─ Purview processContent("uploadText") → log result
+    ├─ If BLOCKED: taint thread (L2b will block outbound)
     └─ Cannot block (void hook) — audit only
     │
     ▼
@@ -421,7 +504,7 @@ L1: before_agent_start (async, modifying)
     └─ Inject DLP security policy into prependContext
     │
     ▼
-OpenClaw builds prompt → sends to LLM (via LiteLLM sidecar)
+OpenClaw builds prompt → sends to LLM (via LiteLLM)
     │
     ▼
 LLM responds with tool call (e.g. exec: cat report.txt)
@@ -430,16 +513,22 @@ LLM responds with tool call (e.g. exec: cat report.txt)
 Tool executes → returns result (contains PII)
     │
     ▼
-L2: tool_result_persist (SYNC, modifying)
-    ├─ processContentSync(content, "uploadText") via spawnSync+curl
-    ├─ If BLOCKED: replace message.content with redaction notice
-    └─ Returns { message: redactedMessage } synchronously
+L2: tool_result_persist (executionMode-driven)
+    ├─ Resolve executionMode via protectionScopes cache
+    ├─ evaluateInline: processContentSync via spawnSync+curl (SYNC)
+    │   ├─ If BLOCKED: redact content + taint thread
+    │   └─ Returns { message: redactedMessage } synchronously
+    ├─ evaluateOffline: processContent via async fetch (log+flag)
+    ├─ none: log via contentActivities, skip scan
+    └─ Log to contentActivities (fire-and-forget)
     │
     ▼
 LLM generates final response (sees redacted tool output + DLP policy)
     │
     ▼
 L2b: message_sending (async, modifying) — LAST LINE OF DEFENSE
+    ├─ Check taint: if thread tainted by L2/L3, block unconditionally
+    ├─ Resolve executionMode → none: log via contentActivities
     ├─ processContent(content, "uploadText") via async fetch
     ├─ If BLOCKED: replace content with DLP block notice
     ├─ Skip if content starts with "[Agent Warden DLP]"
@@ -450,8 +539,10 @@ Message delivered to user via Telegram sendMessage
 ```
 
 **Audit Mode Flow:** Same as above except:
+- All layers resolve executionMode the same way (protectionScopes cache)
 - L2 is async (return value ignored), logs `would BLOCK` instead of redacting
 - L2b is not registered (streaming ON → `message_sending` bypassed anyway)
+- L3 does not taint threads (no enforcement)
 - PII may reach the user (L1 prompt guard still active as soft defense)
 
 ---
@@ -486,22 +577,26 @@ Message delivered to user via Telegram sendMessage
 | 3 | E5-licensed user Object ID configured as `purviewUserId` | ✅ `7ade9412-3a6e-4b37-a3a8-51d8f81de596` |
 | 4 | DLP policies created in Purview compliance portal | ✅ "Agent Warden - Block PII" (CC min 85, SSN min 75) |
 | 5 | Client secret stored in Key Vault | ✅ In `kv-demo-tenant` |
-| 6 | Plugin container image built and pushed to ACR | ✅ `purview-dlp-plugin:0.4.0` |
+| 6 | Plugin container image built and pushed to ACR | ✅ `purview-dlp-plugin:0.5.5` |
 | 7 | Helm values updated with cross-tenant config | ✅ `values-demo-tenant.yaml` |
 
 ---
 
 ## 10. Implementation Phases
 
-### Phase 1: Core Implementation ✅ Complete (v0.1.0 → v0.4.0)
+### Phase 1: Core Implementation ✅ Complete (v0.1.0 → v0.5.5)
 
 1. ✅ L1 prompt guard (before_agent_start)
-2. ✅ L2 output scanner — sync Purview via spawnSync+curl (enforce), async log-only (audit)
+2. ✅ L2 output scanner — executionMode-driven: sync (evaluateInline), async (evaluateOffline), contentActivities (none)
 3. ✅ L2b response scanner (message_sending) — enforce mode, requires streaming OFF
-4. ✅ L3 input audit (message_received)
+4. ✅ L3 input audit (message_received) with taint tracking in enforce mode
 5. ✅ Cross-tenant auth (ClientSecretCredential to E5 tenant)
 6. ✅ Dual-mode support (enforce/audit) with auto-streaming configuration
-7. ✅ E2E tested: enforce mode blocks PII (L2+L2b), audit mode logs only
+7. ✅ protectionScopes/compute with ETag caching + protectionScopeState handling
+8. ✅ contentActivities API for audit logging when no scopes apply
+9. ✅ Conversation tracking (correlationId per thread + sequenceNumber)
+10. ✅ Taint tracking: L2→L2b and L3→L2b block chains
+11. ✅ E2E tested: enforce mode blocks PII (L2+L2b), audit mode logs only
 
 ### Phase 2: Production Hardening (Next)
 
@@ -511,6 +606,7 @@ Message delivered to user via Telegram sendMessage
 4. Add Prometheus metrics (scan count, block count, latency)
 5. Add Cosmos DB audit log for DLP events
 6. Add DLP strike tracking (block tools after N violations)
+7. Replace `spawnSync+curl` with native sync HTTP (when Node.js supports it)
 
 ### Phase 3: Advanced Features (Future)
 
