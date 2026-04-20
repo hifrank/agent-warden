@@ -566,6 +566,51 @@ Message delivered to user via Telegram sendMessage
 
 **Status:** By design. L3 is an audit/logging layer. Enforcement happens at L2 (tool output redaction) and L2b (outbound message blocking).
 
+### 8.4 Applications Workload DLP Policy — "Location is invalid" (Resolved 2026-04-15)
+
+**Problem:** When creating or modifying a DLP policy to include a custom Entra-registered app (e.g., `d94c93dd`), `Set-DlpCompliancePolicy` returned **"Location is invalid"** and `New-DlpCompliancePolicy` failed with various errors depending on the approach.
+
+**Root Cause:** The `-Locations` JSON was missing `LocationSource:"Entra"` and `LocationType:"Individual"`. These fields tell the DLP system that the `Location` value is an Entra-registered enterprise app ID — not a first-party Microsoft app like M365 Copilot. Without them, the system cannot resolve the app ID and rejects it.
+
+**Key Constraints Discovered:**
+
+| # | Constraint | Error if violated |
+|---|-----------|-------------------|
+| 1 | `Applications` workload **cannot** be combined with Exchange/SharePoint/OneDriveForBusiness — requires a **separate** policy | *"DLP Policy if configured for Applications workload, can only have Applications workload"* |
+| 2 | `-Locations` JSON **must** include `"LocationSource":"Entra"` and `"LocationType":"Individual"` for custom Entra app IDs | *"Location is invalid"* |
+| 3 | `-EnforcementPlanes` must be `@("Entra")` for custom apps (`CopilotExperiences` is only for the first-party M365 Copilot app `470f2276`) | *"Only CopilotExperiences supported for M365Copilot"* |
+| 4 | `-BlockAccess` is **not supported** for the Applications workload | *"BlockAccess action is not allowed for Applications workload"* |
+| 5 | `-RestrictAccess` requires a `Hashtable[]` format: `@(@{setting="UploadText";value="Block"})` — not a string array | Type conversion error |
+| 6 | Use `Inclusions` for `New-DlpCompliancePolicy`, `AddInclusions` for `Set-DlpCompliancePolicy` | *"Could not find member 'AddInclusions'"* (on New-) |
+
+**Correct Format (from Microsoft Learn `New-DlpComplianceRule` Example 4):**
+
+```powershell
+$locations = '[{
+  "Workload":            "Applications",
+  "Location":            "d94c93dd-3c80-4f3d-9671-8b71a7dccafa",
+  "LocationDisplayName": "Agent Warden Purview DLP",
+  "LocationSource":      "Entra",
+  "LocationType":        "Individual",
+  "Inclusions":          [{"Type":"Tenant","Identity":"All"}]
+}]'
+
+New-DlpCompliancePolicy -Name "Agent Warden - Entra DLP" `
+  -Mode Enable `
+  -Locations $locations `
+  -EnforcementPlanes @("Entra")
+
+New-DlpComplianceRule -Name "Block PII via Entra App" `
+  -Policy "Agent Warden - Entra DLP" `
+  -ContentContainsSensitiveInformation @(
+    @{Name="Credit Card Number"; minCount="1"},
+    @{Name="U.S. Social Security Number (SSN)"; minCount="1"}
+  ) `
+  -RestrictAccess @(@{setting="UploadText"; value="Block"})
+```
+
+**Resolution:** Created a separate "Agent Warden - Entra DLP" policy (GUID `1cb19044`) with the correct Locations JSON on tenant `dab94ed2`. The existing "Agent Warden - Block PII" policy remains for Exchange/SharePoint/OneDrive workloads.
+
 ---
 
 ## 9. Prerequisites
@@ -575,7 +620,7 @@ Message delivered to user via Telegram sendMessage
 | 1 | E5 tenant app registration with `Content.DLP.Process.All` permission | ✅ Exists (`d94c93dd`) |
 | 2 | Admin consent granted in E5 tenant | ✅ Done |
 | 3 | E5-licensed user Object ID configured as `purviewUserId` | ✅ `7ade9412-3a6e-4b37-a3a8-51d8f81de596` |
-| 4 | DLP policies created in Purview compliance portal | ✅ "Agent Warden - Block PII" (CC min 85, SSN min 75) |
+| 4 | DLP policies created in Purview compliance portal | ✅ "Agent Warden - Block PII" (Exchange/SPO/OD4B) + "Agent Warden - Entra DLP" (Applications workload, `1cb19044`) |
 | 5 | Client secret stored in Key Vault | ✅ In `kv-demo-tenant` |
 | 6 | Plugin container image built and pushed to ACR | ✅ `purview-dlp-plugin:0.5.5` |
 | 7 | Helm values updated with cross-tenant config | ✅ `values-demo-tenant.yaml` |

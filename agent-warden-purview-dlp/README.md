@@ -171,33 +171,66 @@ Repeat for each permission ID.
 
 ### 3. Create a DLP Policy in Purview
 
-Use the Security & Compliance PowerShell module:
+Use the Security & Compliance PowerShell module.
+
+> **IMPORTANT — Applications Workload Constraints:**
+>
+> When creating a DLP policy for the `Applications` workload (i.e., for Entra-registered enterprise apps
+> like OpenClaw), several constraints apply that differ from Exchange/SharePoint/OneDrive policies:
+>
+> 1. **Separate policy required.** The `Applications` workload **cannot** be combined with Exchange,
+>    SharePoint, or OneDriveForBusiness in the same policy. Attempting to do so returns:
+>    *"DLP Policy if configured for Applications workload, can only have Applications workload."*
+>
+> 2. **`LocationSource` and `LocationType` are required.** The `-Locations` JSON **must** include
+>    `"LocationSource":"Entra"` and `"LocationType":"Individual"` for custom Entra-registered app IDs.
+>    Without these fields, the DLP system cannot resolve the app ID and returns **"Location is invalid"**.
+>    This was the root cause of all previous deployment failures on tenant dab94ed2.
+>
+> 3. **`EnforcementPlanes` must be `Entra`** (not `CopilotExperiences`, which is only for the
+>    first-party M365 Copilot app `470f2276-c345-4da8-98ae-23e4f1c402b4`).
+>
+> 4. **`-BlockAccess` is not supported** for the Applications workload. Use
+>    `-RestrictAccess @(@{setting="UploadText";value="Block"})` instead.
 
 ```powershell
 # Connect to Security & Compliance
+Import-Module ExchangeOnlineManagement
 Connect-IPPSSession
 
-# Create a policy scoped to Applications + Entra enforcement
-New-DlpCompliancePolicy -Name "OpenClaw - Block PII" `
-  -ExchangeLocation All `
-  -SharePointLocation All `
-  -OneDriveLocation All `
-  -Workload "Exchange,SharePoint,OneDriveForBusiness,Applications" `
-  -EnforcementPlanes "Entra"
+# ── Step 1: Create the policy with the correct Locations JSON ──
+# The Locations JSON MUST include LocationSource:"Entra" and LocationType:"Individual"
+# for custom Entra-registered apps. Without these, the location is rejected as invalid.
 
-# Add a rule to detect and block credit cards and SSNs
+$locations = '[{
+  "Workload":            "Applications",
+  "Location":            "<YOUR_APP_CLIENT_ID>",
+  "LocationDisplayName": "<YOUR_APP_DISPLAY_NAME>",
+  "LocationSource":      "Entra",
+  "LocationType":        "Individual",
+  "Inclusions":          [{"Type":"Tenant","Identity":"All"}]
+}]'
+
+New-DlpCompliancePolicy -Name "OpenClaw - Block PII" `
+  -Mode Enable `
+  -Locations $locations `
+  -EnforcementPlanes @("Entra")
+
+# ── Step 2: Create a rule with RestrictAccess (not BlockAccess) ──
+# -BlockAccess is NOT supported for the Applications workload.
+# Use -RestrictAccess with a hashtable array instead.
+
 New-DlpComplianceRule -Name "Block SSN and Credit Card" `
   -Policy "OpenClaw - Block PII" `
   -ContentContainsSensitiveInformation @(
-    @{Name="Credit Card Number"; minCount="1"; confidencelevel="Medium"},
-    @{Name="U.S. Social Security Number (SSN)"; minCount="1"; confidencelevel="Medium"}
+    @{Name="Credit Card Number"; minCount="1"},
+    @{Name="U.S. Social Security Number (SSN)"; minCount="1"}
   ) `
-  -BlockAccess $true `
-  -BlockAccessScope All `
-  -RestrictAccess @("UploadText:Block")
+  -RestrictAccess @(@{setting="UploadText"; value="Block"})
 ```
 
 > **Note:** DLP policy changes take 15–60 minutes to propagate to the processContent API.
+> Check propagation with: `Get-DlpCompliancePolicy -Identity "OpenClaw - Block PII" | Select-Object DistributionStatus`
 
 ## Operational Modes
 
@@ -220,6 +253,9 @@ New-DlpComplianceRule -Name "Block SSN and Credit Card" `
 |---------|-------|-----|
 | `protectionScopes/compute` returns 403 | Missing `InformationProtectionPolicy.Read.All` | Grant the permission; plugin falls back to `defaultExecutionMode` |
 | `processContent` returns empty `policyActions` | DLP policy not propagated, or policy not scoped to `Applications`+`Entra` | Wait 15–60 min; verify policy has `EnforcementPlanes: Entra` |
+| `Set-DlpCompliancePolicy` returns "Location is invalid" | Missing `LocationSource:"Entra"` and `LocationType:"Individual"` in `-Locations` JSON | See "Create a DLP Policy" section — these fields are **required** for custom Entra-registered app IDs |
+| "Applications workload can only have Applications workload" | Trying to combine Applications with Exchange/SharePoint/OneDrive | Create a **separate** policy for the Applications workload |
+| "BlockAccess action is not allowed for Applications workload" | Using `-BlockAccess $true` on an Applications rule | Use `-RestrictAccess @(@{setting="UploadText";value="Block"})` instead |
 | LLM self-censors before Purview scans | GPT safety filters trigger on PII patterns | This is expected — L1 prompt guard amplifies it; disable `promptGuard` to test L2/L3 independently |
 | `The provided user doesn't exist` | Wrong `userId` for the Purview tenant | Use Object ID of a licensed user in the Purview tenant |
 | Plugin disabled at startup | Missing env vars for cross-tenant auth | Set `PURVIEW_DLP_TENANT_ID`, `PURVIEW_DLP_CLIENT_ID`, `PURVIEW_DLP_CLIENT_SECRET` |
