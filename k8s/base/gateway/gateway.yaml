@@ -15,7 +15,7 @@ metadata:
   namespace: agent-warden-system
   annotations:
     alb.networking.azure.io/alb-namespace: agent-warden-system
-    alb.networking.azure.io/alb-name: agent-warden-alb
+    alb.networking.azure.io/alb-name: agent-warden-alb-runtime
 spec:
   gatewayClassName: azure-alb-external
   listeners:
@@ -34,6 +34,19 @@ spec:
           selector:
             matchLabels:
               openclaw.io/tenant: "true"
+    - name: https-portal
+      protocol: HTTPS
+      port: 443
+      hostname: agent-warden.aifrank.art
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: portal-tls
+            namespace: agent-warden-system
+      allowedRoutes:
+        namespaces:
+          from: Same
     - name: http-redirect
       protocol: HTTP
       port: 80

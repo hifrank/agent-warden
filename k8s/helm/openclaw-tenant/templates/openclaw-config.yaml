@@ -34,6 +34,26 @@ data:
                 "contextWindow": 128000,
                 "maxTokens": 16384
               }
+              {{- range .Values.litellmProxy.additionalModels }}
+              ,{
+                "id": {{ .id | quote }},
+                "name": {{ .name | quote }},
+                "reasoning": {{ .reasoning | default false }},
+                "input": {{ .input | default (list "text" "image") | toJson }},
+                "contextWindow": {{ .contextWindow | default 128000 }},
+                "maxTokens": {{ .maxTokens | default 16384 }}
+              }
+              {{- end }}
+              {{- if .Values.litellmProxy.grok4Fast }}
+              ,{
+                "id": "grok-4-fast-non-reasoning",
+                "name": "Grok 4 Fast (xAI)",
+                "reasoning": false,
+                "input": ["text"],
+                "contextWindow": 131072,
+                "maxTokens": 16384
+              }
+              {{- end }}
             ]
           }
           {{- else }}
@@ -56,7 +76,11 @@ data:
       "agents": {
         "defaults": {
           {{- if .Values.litellmProxy.enabled }}
-          "model": "litellm/{{ .Values.azureOpenAI.baseModel | default "gpt-4o" }}",
+          "model": "litellm/{{ .Values.litellmProxy.defaultModel | default .Values.azureOpenAI.baseModel | default "gpt-4o" }}",
+          "imageModel": {
+            "primary": "litellm/{{ .Values.litellmProxy.imageModel | default .Values.litellmProxy.defaultModel | default .Values.azureOpenAI.baseModel | default "gpt-4o" }}",
+            "fallbacks": []
+          },
           {{- else }}
           "model": "openai/gpt-4o",
           {{- end }}
@@ -71,6 +95,13 @@ data:
         "nativeSkills": "auto",
         "restart": true,
         "ownerDisplay": "raw"
+      },
+      "tools": {
+        "exec": {
+          "host": "gateway",
+          "ask": "off",
+          "security": "full"
+        }
       },
       "gateway": {
         "controlUi": {
@@ -100,12 +131,13 @@ data:
         }
       },
       {{- end }}
-      {{- if or .Values.purviewDlpPlugin.enabled .Values.agentsViewPlugin.enabled }}
+      {{- if or .Values.purviewDlpPlugin.enabled .Values.agentsViewPlugin.enabled .Values.a365Plugin.enabled }}
       "plugins": {
         "allow": [
           {{- $allowList := list }}
           {{- if .Values.purviewDlpPlugin.enabled }}{{ $allowList = append $allowList "agent-warden-purview-dlp" }}{{ end }}
           {{- if .Values.agentsViewPlugin.enabled }}{{ $allowList = append $allowList "agent-warden-agents-view" }}{{ end }}
+          {{- if .Values.a365Plugin.enabled }}{{ $allowList = append $allowList "agent-warden-a365" }}{{ end }}
           {{- if .Values.diagnosticsOtel.enabled }}{{ $allowList = append $allowList "diagnostics-otel" }}{{ end }}
           {{- if .Values.channels.telegram.enabled }}{{ $allowList = append $allowList "telegram" }}{{ end }}
           {{- range $i, $v := $allowList }}{{ if $i }},{{ end }}
@@ -116,6 +148,7 @@ data:
             {{- $pathList := list }}
             {{- if .Values.purviewDlpPlugin.enabled }}{{ $pathList = append $pathList "/data/state/plugins/agent-warden-purview-dlp" }}{{ end }}
             {{- if .Values.agentsViewPlugin.enabled }}{{ $pathList = append $pathList "/data/state/plugins/agent-warden-agents-view" }}{{ end }}
+            {{- if .Values.a365Plugin.enabled }}{{ $pathList = append $pathList "/data/state/plugins/agent-warden-a365" }}{{ end }}
             {{- range $i, $v := $pathList }}{{ if $i }},{{ end }}
             {{ $v | quote }}{{- end }}
           ]
@@ -126,6 +159,8 @@ data:
           "agent-warden-purview-dlp": { "enabled": true }{{ $entryCount = 1 }}{{ end }}
           {{- if .Values.agentsViewPlugin.enabled }}{{ if $entryCount }},{{ end }}
           "agent-warden-agents-view": { "enabled": true }{{ $entryCount = 1 }}{{ end }}
+          {{- if .Values.a365Plugin.enabled }}{{ if $entryCount }},{{ end }}
+          "agent-warden-a365": { "enabled": true }{{ $entryCount = 1 }}{{ end }}
           {{- if .Values.diagnosticsOtel.enabled }}{{ if $entryCount }},{{ end }}
           "diagnostics-otel": { "enabled": true }{{ end }}
         },
@@ -144,6 +179,14 @@ data:
             "source": "path",
             "sourcePath": "/data/state/plugins/agent-warden-agents-view",
             "installPath": "/data/state/plugins/agent-warden-agents-view",
+            "version": "0.1.0",
+            "installedAt": "{{ now | date "2006-01-02T15:04:05Z" }}"
+          }{{ $installCount = 1 }}{{ end }}
+          {{- if .Values.a365Plugin.enabled }}{{ if $installCount }},{{ end }}
+          "agent-warden-a365": {
+            "source": "path",
+            "sourcePath": "/data/state/plugins/agent-warden-a365",
+            "installPath": "/data/state/plugins/agent-warden-a365",
             "version": "0.1.0",
             "installedAt": "{{ now | date "2006-01-02T15:04:05Z" }}"
           }{{ end }}

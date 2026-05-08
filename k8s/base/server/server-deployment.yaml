@@ -20,21 +20,30 @@ spec:
     spec:
       serviceAccountName: agent-warden-server
       nodeSelector:
-        openclaw.io/pool: system
+        kubernetes.io/os: linux
+      tolerations:
+        - key: openclaw.io/tenant-only
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
       containers:
         - name: server
-          image: acragentwardendev.azurecr.io/agent-warden-server:latest
+          image: acrawardendev.azurecr.io/agent-warden-server:latest
           env:
             - name: MCP_TRANSPORT
               value: "http"
             - name: MCP_SERVER_PORT
               value: "3000"
             - name: AZURE_COSMOS_ENDPOINT
-              value: "https://cosmos-agentwarden-dev.documents.azure.com:443/"
+              value: "https://cosmos-awarden-dev.documents.azure.com:443/"
             - name: AZURE_COSMOS_DATABASE
               value: "agent-warden"
             - name: AZURE_KEYVAULT_URL
-              value: "https://kv-plat-agentwarden-dev.vault.azure.net/"
+              value: "https://kv-plat-awarden-dev.vault.azure.net/"
+            - name: AZURE_KEK_VAULT_URL
+              value: "https://kv-plat-awarden-dev.vault.azure.net/"
+            - name: AZURE_TENANT_ID
+              value: "dab94ed2-4cee-4b36-b007-6618f570b4a3"
             - name: AZURE_PURVIEW_ENDPOINT
               value: "https://ecardpoc4ecv.purview.azure.com"
             - name: AZURE_PURVIEW_GOVERNANCE_ENDPOINT
@@ -42,11 +51,11 @@ spec:
             - name: PURVIEW_ROOT_COLLECTION
               value: "agent-warden-platform"
             - name: AKS_CLUSTER_NAME
-              value: "aks-agentwarden-dev"
+              value: "aks-awarden-dev"
             - name: AKS_RESOURCE_GROUP
-              value: "rg-agentwarden-dev"
+              value: "rg-awarden-dev"
             - name: ACR_LOGIN_SERVER
-              value: "acragentwardendev.azurecr.io"
+              value: "acrawardendev.azurecr.io"
             - name: HELM_CHART_PATH
               value: "/app/charts/openclaw-tenant"
             - name: LOG_LEVEL
@@ -72,6 +81,24 @@ spec:
                 secretKeyRef:
                   name: agent-warden-server-secrets
                   key: PURVIEW_DLP_CLIENT_SECRET
+                  optional: true
+            - name: PURVIEW_DLP_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-server-secrets
+                  key: PURVIEW_DLP_USER_ID
+                  optional: true
+            - name: EVIDENCE_BLOB_ACCOUNT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-server-secrets
+                  key: EVIDENCE_BLOB_ACCOUNT_URL
+                  optional: true
+            - name: EVIDENCE_BLOB_CONTAINER_PREFIX
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-server-secrets
+                  key: EVIDENCE_BLOB_CONTAINER_PREFIX
                   optional: true
             - name: MCP_AUTH_TOKEN
               valueFrom:
@@ -136,4 +163,4 @@ metadata:
     app.kubernetes.io/name: agent-warden-server
     app.kubernetes.io/part-of: agent-warden
   annotations:
-    azure.workload.identity/client-id: "dea0aebd-5099-4ebb-a3ce-a67f2823e40d"
+    azure.workload.identity/client-id: "f2ebc793-5f0f-4057-a3dc-ee41d8db0945"

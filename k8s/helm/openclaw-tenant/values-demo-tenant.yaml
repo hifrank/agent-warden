@@ -29,6 +29,9 @@ litellmProxy:
   shared: true                    # Use shared LiteLLM Deployment in agent-warden-system
   sharedEndpoint: "http://litellm-proxy.agent-warden-system.svc.cluster.local:4000/v1"
   masterKey: "CHANGE-ME"   # Set via --set litellmProxy.masterKey=... or sealed secret
+  grok4Fast: true                 # Enable grok-4-fast-non-reasoning model
+  defaultModel: "grok-4-fast-reasoning"  # Override default agent model
+  imageModel: "gpt-5.4"           # Override default image-capable model (prefixed with litellm/ automatically)
   logLevel: "INFO"     # DEBUG for troubleshooting
   image:
     repository: litellm/litellm
@@ -45,7 +48,7 @@ purviewDlpPlugin:
     outputScanner: true
     inputAudit: true
   purviewEnabled: true
-  purviewUserId: "3ed968e9-98cf-4e61-89f6-3ae3ec61614c"
+  purviewUserId: "21bbd518-a20d-41a6-a5da-78e097fda3e5"
   purviewTenantId: "dab94ed2-4cee-4b36-b007-6618f570b4a3"
   image:
     repository: acragentwardendev.azurecr.io/purview-dlp-plugin
@@ -78,6 +81,10 @@ agentsViewPlugin:
     tag: "0.3.2"
     pullPolicy: IfNotPresent
 
+# -- Disable built-in diagnostics-otel (agents-view handles tracing)
+diagnosticsOtel:
+  enabled: false
+
 # -- Heartbeat sidecar (gateway health → App Insights)
 heartbeat:
   enabled: true
@@ -85,4 +92,13 @@ heartbeat:
     repository: acragentwardendev.azurecr.io/heartbeat
     tag: "latest"
     pullPolicy: Always
+
+# -- Channels (Telegram)
+channels:
+  telegram:
+    enabled: true
+
+# -- A365 Observability Plugin (disabled — export 403 unresolved)
+a365Plugin:
+  enabled: false
 

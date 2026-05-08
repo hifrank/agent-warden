@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/name: litellm-proxy
     app.kubernetes.io/part-of: agent-warden
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: litellm-proxy
@@ -22,8 +22,11 @@ spec:
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: litellm-proxy
-      nodeSelector:
-        openclaw.io/pool: system
+      tolerations:
+        - key: openclaw.io/tenant-only
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
       containers:
         - name: litellm
           image: litellm/litellm:v1.82.0-stable
@@ -52,6 +55,11 @@ spec:
                   optional: true
             - name: COSMOS_DATABASE
               value: "agent-warden"
+            - name: AZURE_AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-proxy-secret
+                  key: azure-ai-api-key
           ports:
             - name: http
               containerPort: 4000

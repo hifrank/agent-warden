@@ -45,26 +45,41 @@ spec:
         # Preserves any in-place runtime config changes on subsequent restarts.
         - name: seed-openclaw-config
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          securityContext:
+            runAsUser: 0
           command:
             - /bin/sh
             - -c
             - |
               set -e
               TARGET="/data/state/openclaw.json"
+              SEED="/config-seed/openclaw.json"
               if [ -f "$TARGET" ]; then
-                echo "openclaw.json already exists — skipping seed"
+                echo "openclaw.json already exists — checking for plugin updates"
+                # Compare plugin allow-lists between current config and seed (ConfigMap)
+                CURRENT_PLUGINS=$(cat "$TARGET" | python3 -c "import json,sys; d=json.load(sys.stdin); print(' '.join(sorted(d.get('plugins',{}).get('allow',[]))))" 2>/dev/null || echo "")
+                SEED_PLUGINS=$(cat "$SEED" | python3 -c "import json,sys; d=json.load(sys.stdin); print(' '.join(sorted(d.get('plugins',{}).get('allow',[]))))" 2>/dev/null || echo "")
+                if [ "$CURRENT_PLUGINS" != "$SEED_PLUGINS" ]; then
+                  echo "Plugin config changed — backing up and re-seeding"
+                  echo "  was: $CURRENT_PLUGINS"
+                  echo "  now: $SEED_PLUGINS"
+                  mv "$TARGET" "${TARGET}.bak" || rm -f "$TARGET"
+                  cp "$SEED" "$TARGET"
+                else
+                  echo "Plugin config up-to-date — skipping seed"
+                fi
               else
                 echo "Seeding openclaw.json from ConfigMap..."
-                cp /config-seed/openclaw.json "$TARGET"
-                # Replace placeholder tokens with real secrets
-                sed -i "s|LITELLM_MASTER_KEY_PLACEHOLDER|${LITELLM_MASTER_KEY}|g" "$TARGET"
-                sed -i "s|GATEWAY_TOKEN_PLACEHOLDER|${GATEWAY_TOKEN}|g" "$TARGET"
-                {{- if .Values.channels.telegram.enabled }}
-                sed -i "s|TELEGRAM_BOT_TOKEN_PLACEHOLDER|${TELEGRAM_BOT_TOKEN}|g" "$TARGET"
-                {{- end }}
-                chown 1000:1000 "$TARGET"
-                echo "openclaw.json seeded successfully"
+                cp "$SEED" "$TARGET"
               fi
+              # Replace placeholder tokens with real secrets
+              sed -i "s|LITELLM_MASTER_KEY_PLACEHOLDER|${LITELLM_MASTER_KEY}|g" "$TARGET"
+              sed -i "s|GATEWAY_TOKEN_PLACEHOLDER|${GATEWAY_TOKEN}|g" "$TARGET"
+              {{- if .Values.channels.telegram.enabled }}
+              sed -i "s|TELEGRAM_BOT_TOKEN_PLACEHOLDER|${TELEGRAM_BOT_TOKEN}|g" "$TARGET"
+              {{- end }}
+              chown 1000:1000 "$TARGET"
+              echo "openclaw.json ready"
           env:
             {{- if .Values.litellmProxy.enabled }}
             - name: LITELLM_MASTER_KEY
@@ -87,6 +102,9 @@ spec:
               mountPath: /data/state
             - name: openclaw-config-seed
               mountPath: /config-seed
+              readOnly: true
+            - name: secrets
+              mountPath: /mnt/secrets
               readOnly: true
           resources:
             requests:
@@ -203,6 +221,62 @@ spec:
               drop: ["ALL"]
               add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
         {{- end }}
+        {{- if .Values.a365Plugin.enabled }}
+        # Copy Agent 365 Observability plugin into shared volume for gateway to load
+        - name: install-a365-plugin
+          image: {{ .Values.a365Plugin.image.repository }}:{{ .Values.a365Plugin.image.tag }}
+          imagePullPolicy: {{ .Values.a365Plugin.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              TARGET=/data/state/plugins/agent-warden-a365
+              rm -rf "$TARGET"
+              mkdir -p "$TARGET"
+              cd /plugin && tar cf - . | tar xf - --no-same-owner -C "$TARGET"
+              # Write runtime config (Helm values → plugin config.json)
+              cat > "$TARGET/config.json" <<'CFGEOF'
+              {
+                "agentId": {{ .Values.a365Plugin.agentId | quote }},
+                "agentName": {{ .Values.a365Plugin.agentName | quote }},
+                "agentBlueprintId": {{ .Values.a365Plugin.agentBlueprintId | quote }},
+                "agentUpn": {{ .Values.a365Plugin.agentUpn | quote }},
+                "agenticUserId": {{ .Values.a365Plugin.agenticUserId | quote }},
+                "aaInstanceId": {{ .Values.a365Plugin.aaInstanceId | quote }},
+                "tenantId": {{ (.Values.a365Plugin.m365TenantId | default .Values.a365Plugin.azureTenantId) | quote }},
+                "channelName": {{ .Values.a365Plugin.channelName | quote }},
+                "enableA365Exporter": {{ .Values.a365Plugin.enableA365Exporter }},
+                "serviceName": {{ .Values.a365Plugin.serviceName | quote }},
+                "serviceNamespace": {{ .Values.a365Plugin.serviceNamespace | quote }}
+              }
+              CFGEOF
+              chown -R 1000:1000 /data/state/plugins
+              chmod -R u=rwX,g=rX,o=rX /data/state/plugins
+              echo "Plugin installed at $TARGET"
+              ls -la "$TARGET"
+          env:
+            {{- if .Values.a365Plugin.enableA365Exporter }}
+            - name: ENABLE_A365_OBSERVABILITY_EXPORTER
+              value: "true"
+            {{- end }}
+          volumeMounts:
+            - name: state-vol
+              mountPath: /data/state
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+        {{- end }}
         {{- if .Values.browserInit.enabled }}
         # Install Chrome browser files for agent-browser (keeps upstream OpenClaw image clean)
         - name: install-browser
@@ -233,6 +307,50 @@ spec:
               drop: ["ALL"]
               add: ["CHOWN", "FOWNER"]
         {{- end }}
+        # Install @opentelemetry/* deps for built-in diagnostics-otel extension.
+        # The extension ships in the image at /app/extensions/diagnostics-otel/ but
+        # its npm dependencies are not bundled. We install once to the PVC and
+        # symlink at container start (see gateway args below).
+        - name: install-otel-deps
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              DEPS_DIR="/data/state/otel-deps"
+              SRC_PKG="/app/extensions/diagnostics-otel/package.json"
+              if [ ! -f "$SRC_PKG" ]; then
+                echo "diagnostics-otel extension not found in image — skipping"
+                exit 0
+              fi
+              # Only reinstall if package.json changed or node_modules missing
+              if [ -f "$DEPS_DIR/package.json" ] && diff -q "$SRC_PKG" "$DEPS_DIR/package.json" >/dev/null 2>&1 && [ -d "$DEPS_DIR/node_modules" ]; then
+                echo "OTEL deps already installed — skipping"
+              else
+                echo "Installing diagnostics-otel dependencies..."
+                mkdir -p "$DEPS_DIR"
+                cp "$SRC_PKG" "$DEPS_DIR/package.json"
+                cd "$DEPS_DIR" && npm install --omit=dev
+                echo "OTEL deps installed successfully"
+              fi
+              chown -R 1000:1000 "$DEPS_DIR"
+          volumeMounts:
+            - name: state-vol
+              mountPath: /data/state
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER"]
         {{- if .Values.memoryIndexRebuild.enabled }}
         # Memory index rebuild (§4.5.8)
         - name: memory-index-check
@@ -254,6 +372,8 @@ spec:
               mountPath: /data/state
             - name: work-vol
               mountPath: /data/workspace
+            - name: ephemeral
+              mountPath: /tmp
           resources:
             requests:
               cpu: 100m
@@ -277,12 +397,18 @@ spec:
           args:
             - |
               ln -sfn /opt/agent-browser /home/node/.agent-browser
+              # Symlink OTEL deps from PVC into the built-in extension
+              if [ -d /data/state/otel-deps/node_modules ]; then
+                ln -sfn /data/state/otel-deps/node_modules /app/extensions/diagnostics-otel/node_modules
+              fi
               exec openclaw gateway --bind lan --allow-unconfigured
           env:
             - name: OPENCLAW_STATE_DIR
               value: /data/state
             - name: OPENCLAW_CONFIG_PATH
               value: /data/state/openclaw.json
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size={{ .Values.gateway.heapSizeMb | default 1536 }}"
             - name: NODE_ENV
               value: production
             - name: PATH
@@ -301,6 +427,8 @@ spec:
             {{- end }}
             - name: XDG_RUNTIME_DIR
               value: /tmp
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "tenant.id={{ .Values.tenantId }}"
             {{- if .Values.litellmProxy.enabled }}
             # LiteLLM proxy handles Azure OpenAI translation + MI auth
             - name: OPENAI_API_KEY
@@ -338,6 +466,28 @@ spec:
               value: {{ .Values.purviewDlpPlugin.purviewTenantId | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.a365Plugin.enabled }}
+            - name: A365_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-{{ .Values.tenantId }}-secrets
+                  key: A365_CLIENT_ID
+            - name: A365_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-{{ .Values.tenantId }}-secrets
+                  key: A365_CLIENT_SECRET
+            - name: A365_TENANT_ID
+              value: {{ .Values.a365Plugin.azureTenantId | quote }}
+            {{- if .Values.a365Plugin.aaInstanceId }}
+            - name: A365_AA_INSTANCE_ID
+              value: {{ .Values.a365Plugin.aaInstanceId | quote }}
+            {{- end }}
+            {{- if .Values.a365Plugin.enableA365Exporter }}
+            - name: ENABLE_A365_OBSERVABILITY_EXPORTER
+              value: "true"
+            {{- end }}
+            {{- end }}
           volumeMounts:
             - name: state-vol
               mountPath: /data/state
@@ -352,6 +502,8 @@ spec:
               mountPath: /var/tmp
             - name: openclaw-home
               mountPath: /home/node/.openclaw
+            - name: work-vol
+              mountPath: /home/node/.openclaw/workspace
             {{- if .Values.browserInit.enabled }}
             - name: browser-vol
               mountPath: /opt/agent-browser

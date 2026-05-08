@@ -20,4 +20,4 @@ tags = {
 purview_account_name = "ecardpoc4ecv"
 
 # Tenant Key Vaults managed by Terraform (with Private Link)
-tenant_ids = ["demo-tenant"]
+tenant_ids = ["demo-tenant", "observability-test"]

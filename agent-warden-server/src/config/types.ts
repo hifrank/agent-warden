@@ -9,6 +9,7 @@ export const TenantStateSchema = z.enum([
   "Active",
   "Degraded",
   "Suspended",
+  "Deleting",
   "Archived",
   "Deleted",
 ]);
@@ -22,7 +23,8 @@ export const ChannelConfigSchema = z.object({
 export const TenantProvisionInputSchema = z.object({
   tenantId: z.string().min(3).max(63).regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/),
   adminEmail: z.string().email(),
-  tier: TierSchema,
+  tier: TierSchema.default("pro"),
+  model: z.string().default("gpt-5.4"),
   region: z.string().default("eastus2"),
   channels: z.array(ChannelConfigSchema).default([]),
 });
@@ -64,6 +66,7 @@ export const HealthCheckResultSchema = z.object({
 export type HealthCheckResult = z.infer<typeof HealthCheckResultSchema>;
 
 export const InstanceRecordSchema = z.object({
+  id: z.string().optional(),
   tenantId: z.string(),
   instanceId: z.string(),
   state: TenantStateSchema,
@@ -81,6 +84,28 @@ export const InstanceRecordSchema = z.object({
   messagesLast24h: z.number().int().default(0),
   llmTokensLast24h: z.number().int().default(0),
   ownerIdentity: z.string(),
+  provisioningError: z.string().optional(),
+  provisioningStep: z.number().int().optional(),
+  provisioningStepLabel: z.string().optional(),
+  provisioningTotalSteps: z.number().int().optional(),
   tags: z.record(z.string()).default({}),
+  dlpAppRegistration: z.object({
+    e5TenantId: z.string(),
+    appId: z.string(),
+    objectId: z.string(),
+    displayName: z.string(),
+    encryptedClientSecret: z.any(),
+    createdAt: z.string(),
+  }).optional(),
+  dlpConfig: z.object({
+    userId: z.string().optional(),
+    policyName: z.string().optional(),
+    mode: z.enum(["enforce", "audit", "inherit"]).default("inherit"),
+    layers: z.object({
+      promptGuard: z.boolean(),
+      outputScanner: z.boolean(),
+      inputAudit: z.boolean(),
+    }).optional(),
+  }).optional(),
 });
 export type InstanceRecord = z.infer<typeof InstanceRecordSchema>;

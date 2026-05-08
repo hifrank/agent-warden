@@ -5,8 +5,9 @@ An OpenClaw plugin that enforces Microsoft Purview Data Loss Prevention (DLP) po
 ## Features
 
 - **L1: Prompt Guard** — Injects DLP-aware system prompt so the LLM self-censors sensitive data
-- **L2: Output Scanner** — Scans tool results (file reads, web fetches, etc.) via Purview before the LLM sees them
-- **L2b: Response Scanner** — Scans the LLM's final response before it reaches the user (enforce mode)
+- **L1.5: Pre-Tool Guard** — Intercepts file-read and outbound tools via `before_tool_call`; pre-reads files and scans content through Purview **before** the tool executes, blocking PII from ever entering the LLM context
+- **L2: Output Scanner** — Scans tool results (file reads, web fetches, etc.) via Purview after tool execution
+- **L2b: Response Scanner** — Scans the LLM's final response before it reaches the user (enforce mode, Telegram only — see Limitations)
 - **L3: Input Audit** — Scans inbound user messages via Purview
 - **Protection Scopes** — Respects `evaluateInline` / `evaluateOffline` from Purview's `protectionScopes/compute` API
 - **Two Modes** — `enforce` (block + redact) or `audit` (log only)
@@ -269,12 +270,39 @@ User ──► OpenClaw Gateway
               │
               ├── L1: before_agent_start ──► Inject DLP system prompt
               │
-              ├── LLM Call ──► GPT-5.4 / GPT-4o / etc.
+              ├── L1.5: before_tool_call ──► Pre-read file + Purview scan
+              │        │
+              │        ├── ALLOWED → tool executes normally
+              │        └── BLOCKED → tool blocked, LLM never sees PII
               │
-              ├── L2: tool_result_persist ──► Purview processContent (downloadText)
+              ├── LLM Call ──► GPT-5.1 / GPT-4o / etc.
               │
-              └── L2b: message_sending ──► Purview processContent (downloadText)
-                        │
+              ├── L2: tool_result_persist ──► Purview processContent (uploadText)
+              │        └── BLOCKED → redact persisted content + taint thread
+              │
+              └── L2b: message_sending ──► Purview processContent (uploadText)
+                        │   (Telegram/Slack/Discord channels only — see Limitations)
                         ├── ALLOWED → send to user
                         └── BLOCKED → "[DLP] Content redacted"
 ```
+
+### Primary Enforcement Point
+
+L1.5 is the **primary enforcement layer** for file-read operations. It reads the file
+content from disk before the `read` tool executes and scans it through Purview. If PII
+is detected, the tool is blocked — the LLM never sees the raw content. This works
+across all channels (web UI, Telegram, API).
+
+L2 provides **defense in depth** by scanning tool output after execution. L2b provides
+an additional layer by scanning the LLM's outbound response, but only works for
+message-channel integrations (Telegram, Slack, Discord).
+
+## Limitations
+
+- **L2b does not fire for the web UI channel.** The OpenClaw web control UI uses SSE
+  streaming to push LLM tokens to the browser, which bypasses the `message_sending`
+  hook entirely. L1.5 is the primary enforcement point for web UI users.
+- **L1.5 only pre-reads files accessible from the plugin's filesystem.** Files fetched
+  by network tools (e.g., `web_fetch`) are not pre-scanned; they rely on L2 output scanning.
+- **Init container overwrites plugin files on every pod restart.** Source edits via
+  `kubectl cp` are lost. Always rebuild and push a new Docker image.

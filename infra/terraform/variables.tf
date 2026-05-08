@@ -1,3 +1,15 @@
+variable "subscription_id" {
+  description = "Azure subscription ID to deploy into. Defaults to CLI context if empty."
+  type        = string
+  default     = ""
+}
+
+variable "tenant_id" {
+  description = "Azure AD tenant ID. Defaults to CLI context if empty."
+  type        = string
+  default     = ""
+}
+
 variable "environment" {
   description = "Environment name (dev, staging, prod)"
   type        = string
@@ -32,25 +44,49 @@ variable "kubernetes_version" {
 variable "system_node_vm_size" {
   description = "VM size for AKS system node pool"
   type        = string
-  default     = "Standard_D4s_v5"
+  default     = "Standard_B4s_v2"
+}
+
+variable "system_node_count" {
+  description = "Node count for AKS system node pool"
+  type        = number
+  default     = 1
 }
 
 variable "tenant_node_vm_size" {
   description = "VM size for AKS tenant node pool"
   type        = string
-  default     = "Standard_D8s_v5"
+  default     = "Standard_D4s_v5"
+}
+
+variable "tenant_node_count" {
+  description = "Fixed node count for tenant pool (used when autoscaling is disabled)"
+  type        = number
+  default     = 1
+}
+
+variable "tenant_node_autoscaling_enabled" {
+  description = "Enable cluster autoscaler for tenant node pool"
+  type        = bool
+  default     = false
 }
 
 variable "tenant_node_min_count" {
-  description = "Minimum node count for tenant node pool"
+  description = "Minimum node count for tenant node pool (when autoscaling enabled)"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "tenant_node_max_count" {
-  description = "Maximum node count for tenant node pool"
+  description = "Maximum node count for tenant node pool (when autoscaling enabled)"
   type        = number
-  default     = 20
+  default     = 10
+}
+
+variable "aks_availability_zones" {
+  description = "Availability zones for AKS node pools"
+  type        = list(string)
+  default     = ["1", "3"]
 }
 
 variable "aks_authorized_ip_ranges" {

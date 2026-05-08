@@ -11,19 +11,15 @@ metadata:
 data:
   config.yaml: |
     model_list:
-      - model_name: gpt-5.4
+      - model_name: kimi-k2.5
         litellm_params:
-          model: azure/gpt-54
-          api_base: https://aoai-agentwarden-dev.openai.azure.com/
-          api_version: "2024-10-21"
-          base_model: "gpt-5.4"
-          stream_options:
-            include_usage: true
+          model: azure_ai/Kimi-K2-5
+          api_base: https://ai-awarden-dev.services.ai.azure.com/models
+          api_key: os.environ/AZURE_AI_API_KEY
 
     litellm_settings:
       drop_params: true
       telemetry: false
-      enable_azure_ad_token_refresh: true
       callbacks: ["custom_callback.data_llm_callback"]
 
     general_settings:

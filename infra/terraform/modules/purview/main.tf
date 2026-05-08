@@ -32,7 +32,7 @@ data "azurerm_client_config" "current" {}
 # Note: This requires the Purview MSI principal ID from the E5 tenant
 # to be provided as a variable. Skip if not available.
 resource "azurerm_role_assignment" "purview_cosmos_reader" {
-  count                = var.purview_identity_principal_id != "" && var.cosmos_account_id != "" ? 1 : 0
+  count                = var.purview_identity_principal_id != "" ? 1 : 0
   scope                = var.cosmos_account_id
   role_definition_name = "Cosmos DB Account Reader Role"
   principal_id         = var.purview_identity_principal_id

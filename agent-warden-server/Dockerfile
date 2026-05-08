@@ -6,6 +6,10 @@ COPY src/ src/
 RUN npm run build
 
 FROM node:22-alpine
+RUN apk add --no-cache curl \
+    && curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && chmod +x kubectl && mv kubectl /usr/local/bin/ \
+    && apk del curl
 WORKDIR /app
 COPY --from=build /app/dist/ dist/
 COPY --from=build /app/package.json /app/package-lock.json ./

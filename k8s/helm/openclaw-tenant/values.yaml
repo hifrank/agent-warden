@@ -4,7 +4,7 @@ tier: "free"  # free | pro | enterprise
 
 # -- OpenClaw image
 image:
-  repository: ghcr.io/openclaw/openclaw
+  repository: acragentwardendev.azurecr.io/openclaw
   tag: "2026.3.12"
   pullPolicy: IfNotPresent
 
@@ -107,7 +107,7 @@ gitSync:
 
 # -- Memory index rebuild init container (§4.5.8)
 memoryIndexRebuild:
-  enabled: true
+  enabled: false
 
 # -- Ephemeral volume size limit
 ephemeralSizeLimit: "2Gi"
@@ -122,6 +122,8 @@ litellmProxy:
   sharedEndpoint: "http://litellm-proxy.agent-warden-system.svc.cluster.local:4000/v1"
   port: 4000
   masterKey: ""                    # Ignored in shared mode; sourced from Key Vault secret 'litellm-master-key'
+  grok4Fast: false                 # Enable grok-4-fast-non-reasoning model in OpenClaw catalog
+  imageModel: ""                   # Image-capable model override (e.g. "gpt-5.4"); prefixed with litellm/ automatically; defaults to azureOpenAI.baseModel if empty
   logLevel: "WARNING"
   image:
     repository: litellm/litellm
@@ -138,17 +140,17 @@ purviewDlpPlugin:
     outputScanner: true     # L2: scan tool output via Purview processContent
     inputAudit: true        # L3: audit inbound user messages via Purview
   purviewEnabled: true      # Enable Purview Graph API (requires Content.Process.All + M365 E5 license)
-  purviewUserId: ""         # Entra user ID for app-only auth (managed identity)
-  purviewTenantId: ""       # E5 tenant ID: dab94ed2-4cee-4b36-b007-6618f570b4a3
+  purviewUserId: ""   # Per-agent E5-licensed Entra user — set via Instance Detail UI, passed during provisioning
+  purviewTenantId: "dab94ed2-4cee-4b36-b007-6618f570b4a3"  # E5 tenant ID (aprforazure)
   image:
-    repository: ghcr.io/agent-warden/purview-dlp-plugin
-    tag: "latest"
+    repository: acragentwardendev.azurecr.io/purview-dlp-plugin
+    tag: "0.2.4"
     pullPolicy: IfNotPresent
 
 # -- Agents View Plugin (OpenClaw plugin for Azure Monitor Agents View)
 # Emits OTel GenAI Semantic Convention spans for Azure Monitor's Agents View blade.
 agentsViewPlugin:
-  enabled: false
+  enabled: true
   otelEndpoint: "http://otel-collector.agent-warden-system.svc.cluster.local:4318/v1/traces"
   sampleRate: 1.0
   enableContentCapture: false   # PII-sensitive — captures prompt/completion content in spans
@@ -156,6 +158,29 @@ agentsViewPlugin:
   image:
     repository: acragentwardendev.azurecr.io/agents-view-plugin
     tag: "0.3.0"
+    pullPolicy: IfNotPresent
+
+# -- Agent 365 Observability Plugin (OpenClaw plugin for M365 security stack)
+# Emits Agent 365 SDK spans (InvokeAgent, ExecuteTool, Inference) to
+# M365 Admin Center, Microsoft Defender, and Purview DSPM.
+# Requires Frontier Preview Program enrollment for production export.
+a365Plugin:
+  enabled: false
+  agentId: "60e56f90-f29e-4b97-ac94-6b0500106f77"   # Blueprint app ID (no bot registration)
+  agentName: "Agent Warden"
+  agentBlueprintId: "60e56f90-f29e-4b97-ac94-6b0500106f77"
+  agentUpn: "a365072dfe@aprforazure.onmicrosoft.com"
+  agenticUserId: "a55f13fb-b27d-4421-832e-2f441bc6c9a0"  # Agentic user OID (from M365 Admin Center activation)
+  aaInstanceId: "760d5a66-7a2d-4c58-b8f9-b89627429aeb"   # AA Instance ID — required for T1/T2/FIC token flow
+  m365TenantId: "dab94ed2-4cee-4b36-b007-6618f570b4a3"   # M365 tenant ID — appears in A365 span baggage
+  azureTenantId: "dab94ed2-4cee-4b36-b007-6618f570b4a3"  # Azure AD tenant ID for T1/T2/FIC token flow
+  channelName: "telegram"
+  enableA365Exporter: true    # Export to agent365.svc.cloud.microsoft
+  serviceName: "openclaw-gateway"
+  serviceNamespace: "agent-warden"
+  image:
+    repository: acragentwardendev.azurecr.io/a365-plugin
+    tag: "0.1.4"
     pullPolicy: IfNotPresent
 
 # -- Browser init container (installs Chrome for agent-browser)
@@ -202,7 +227,7 @@ saasProxy:
   googleClientId: ""     # Entra App Registration or Google OAuth client ID
   graphClientId: ""      # Entra App Registration client ID for Microsoft Graph
   image:
-    repository: ghcr.io/agent-warden/saas-auth-proxy
+    repository: acragentwardendev.azurecr.io/agent-warden-saas-proxy
     tag: "latest"
     pullPolicy: IfNotPresent
   # Path-level allow/deny policies per SaaS provider

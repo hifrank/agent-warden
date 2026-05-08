@@ -18,6 +18,9 @@ terraform {
 }
 
 provider "azurerm" {
+  subscription_id = var.subscription_id != "" ? var.subscription_id : null
+  tenant_id       = var.tenant_id != "" ? var.tenant_id : null
+
   features {
     key_vault {
       purge_soft_delete_on_destroy = false
@@ -28,4 +31,6 @@ provider "azurerm" {
   }
 }
 
-provider "azuread" {}
+provider "azuread" {
+  tenant_id = var.tenant_id != "" ? var.tenant_id : null
+}

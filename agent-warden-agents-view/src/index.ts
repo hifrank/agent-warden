@@ -312,13 +312,18 @@ export default {
           const { span } = llmCtx;
 
           // Token usage — OpenClaw puts usage at event.lastAssistant.usage
+          // Use || instead of ?? so that 0 (streaming placeholder) falls through
+          // to the next source. A real LLM response always has >0 tokens.
           const u = event?.lastAssistant?.usage;
           const inputTokens =
-            u?.input ?? u?.promptTokens ?? u?.input_tokens ??
-            event?.usage?.promptTokens ?? event?.usage?.input_tokens;
+            u?.input || u?.promptTokens || u?.input_tokens ||
+            u?.totalTokens ||
+            event?.usage?.promptTokens || event?.usage?.input_tokens ||
+            undefined;
           const outputTokens =
-            u?.output ?? u?.completionTokens ?? u?.output_tokens ??
-            event?.usage?.completionTokens ?? event?.usage?.output_tokens;
+            u?.output || u?.completionTokens || u?.output_tokens ||
+            event?.usage?.completionTokens || event?.usage?.output_tokens ||
+            undefined;
           const responseModel =
             event?.model ?? event?.lastAssistant?.model ?? event?.response?.model;
           const finishReason =
@@ -457,13 +462,15 @@ export default {
           const execStatus = details?.status;
 
           // Tool result — from details.aggregated (raw output) or content array
+          // Tool result — prefer message.content (which DLP plugin may have redacted)
+          // over details.aggregated (raw output) to avoid leaking PII into traces.
           let toolResult = "";
-          if (typeof details?.aggregated === "string") {
-            toolResult = details.aggregated;
-          } else if (Array.isArray(msg?.content)) {
+          if (Array.isArray(msg?.content)) {
             toolResult = msg.content.map((c: any) => c?.text ?? "").join("\n");
           } else if (typeof msg?.content === "string") {
             toolResult = msg.content;
+          } else if (typeof details?.aggregated === "string") {
+            toolResult = details.aggregated;
           }
           const truncatedResult = toolResult.length > 500
             ? toolResult.slice(0, 500) + "…"

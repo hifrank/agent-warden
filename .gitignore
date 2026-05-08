@@ -4,6 +4,8 @@ package-lock.json
 
 # Build output
 dist/
+build/
+.svelte-kit/
 *.js.map
 
 # Terraform

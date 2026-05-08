@@ -4,13 +4,16 @@ variable "resource_group_name" { type = string }
 variable "kubernetes_version" { type = string }
 variable "system_node_vm_size" { type = string }
 variable "tenant_node_vm_size" { type = string }
+variable "system_node_count" { type = number }
+variable "tenant_node_count" { type = number }
 variable "tenant_node_min_count" { type = number }
 variable "tenant_node_max_count" { type = number }
-variable "vnet_subnet_id" { type = string }
-variable "agc_id" {
-  type        = string
-  description = "Application Gateway for Containers resource ID for ALB Controller association"
+variable "tenant_node_autoscaling_enabled" {
+  type    = bool
+  default = false
 }
+variable "vnet_subnet_id" { type = string }
+
 variable "log_analytics_workspace_id" { type = string }
 variable "acr_id" { type = string }
 variable "admin_group_object_id" { type = string }
@@ -20,6 +23,11 @@ variable "authorized_ip_ranges" {
   default     = []
 }
 variable "tags" { type = map(string) }
+variable "availability_zones" {
+  type        = list(string)
+  description = "Availability zones for node pools"
+  default     = ["1", "3"]
+}
 
 resource "azurerm_kubernetes_cluster" "this" {
   name                = var.name
@@ -45,15 +53,14 @@ resource "azurerm_kubernetes_cluster" "this" {
   oidc_issuer_enabled       = true
   workload_identity_enabled = true
 
-  # System node pool
+  # System node pool — burstable B-series for dev cost savings
   default_node_pool {
-    name                 = "system"
+    name                 = "sys3"
     vm_size              = var.system_node_vm_size
-    node_count           = 3
+    node_count           = var.system_node_count
     vnet_subnet_id       = var.vnet_subnet_id
     os_disk_type         = "Managed"
     os_disk_size_gb      = 128
-    zones                = ["1", "3"]
     auto_scaling_enabled = false
 
     node_labels = {
@@ -107,17 +114,17 @@ resource "azurerm_kubernetes_cluster" "this" {
 
 # Tenant node pool — separate pool for OpenClaw tenant pods
 resource "azurerm_kubernetes_cluster_node_pool" "tenant" {
-  name                  = "tenant"
+  name                  = "tnt2"
   kubernetes_cluster_id = azurerm_kubernetes_cluster.this.id
   vm_size               = var.tenant_node_vm_size
   vnet_subnet_id        = var.vnet_subnet_id
   os_disk_type          = "Managed"
   os_disk_size_gb       = 128
-  zones                 = ["1", "3"]
 
-  auto_scaling_enabled = true
-  min_count            = var.tenant_node_min_count
-  max_count            = var.tenant_node_max_count
+  auto_scaling_enabled = var.tenant_node_autoscaling_enabled
+  node_count           = var.tenant_node_autoscaling_enabled ? null : var.tenant_node_count
+  min_count            = var.tenant_node_autoscaling_enabled ? var.tenant_node_min_count : null
+  max_count            = var.tenant_node_autoscaling_enabled ? var.tenant_node_max_count : null
 
   node_labels = {
     "openclaw.io/pool" = "tenant"

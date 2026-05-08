@@ -53,16 +53,19 @@ module "aks" {
   location                   = var.location
   resource_group_name        = data.azurerm_resource_group.main.name
   kubernetes_version         = var.kubernetes_version
-  system_node_vm_size        = var.system_node_vm_size
-  tenant_node_vm_size        = var.tenant_node_vm_size
-  tenant_node_min_count      = var.tenant_node_min_count
-  tenant_node_max_count      = var.tenant_node_max_count
+  system_node_vm_size             = var.system_node_vm_size
+  system_node_count                = var.system_node_count
+  tenant_node_vm_size              = var.tenant_node_vm_size
+  tenant_node_count                = var.tenant_node_count
+  tenant_node_autoscaling_enabled  = var.tenant_node_autoscaling_enabled
+  tenant_node_min_count            = var.tenant_node_min_count
+  tenant_node_max_count            = var.tenant_node_max_count
   vnet_subnet_id             = module.vnet.aks_subnet_id
-  agc_id                     = module.appgw.agc_id
   log_analytics_workspace_id = module.log_analytics.workspace_id
   acr_id                     = module.acr.acr_id
   admin_group_object_id      = var.aks_admin_group_object_id
   authorized_ip_ranges       = var.aks_authorized_ip_ranges
+  availability_zones         = var.aks_availability_zones
   tags                       = local.common_tags
 }
 
@@ -102,18 +105,6 @@ module "cosmos" {
   name                       = "cosmos-${local.suffix}"
   location                   = var.location
   resource_group_name        = data.azurerm_resource_group.main.name
-  log_analytics_workspace_id = module.log_analytics.workspace_id
-  tags                       = local.common_tags
-}
-
-# ─── Application Gateway for Containers (AGC) ────────
-module "appgw" {
-  source = "./modules/appgw"
-
-  name                       = "agc-${local.suffix}"
-  location                   = var.location
-  resource_group_name        = data.azurerm_resource_group.main.name
-  subnet_id                  = module.vnet.appgw_subnet_id
   log_analytics_workspace_id = module.log_analytics.workspace_id
   tags                       = local.common_tags
 }
