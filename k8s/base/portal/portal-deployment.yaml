@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-warden-portal
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: agent-warden-portal
+    app.kubernetes.io/part-of: agent-warden
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-warden-portal
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agent-warden-portal
+        app.kubernetes.io/part-of: agent-warden
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: agent-warden-portal
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - key: openclaw.io/tenant-only
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: portal
+          image: acrawardendev.azurecr.io/agent-warden-portal:0.1.1
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "3000"
+            - name: AZURE_COSMOS_ENDPOINT
+              value: "https://cosmos-awarden-dev.documents.azure.com:443/"
+            - name: AZURE_COSMOS_DATABASE
+              value: "agent-warden"
+            - name: LOG_ANALYTICS_WORKSPACE_ID
+              value: "811f8c11-2d1c-4e94-bec1-992c6c35792a"
+            - name: WARDEN_SERVER_URL
+              value: "http://agent-warden-server.agent-warden-system.svc.cluster.local:3000"
+            - name: PUBLIC_ENTRA_REDIRECT_URI
+              value: "https://agent-warden.aifrank.art"
+            - name: PUBLIC_ENTRA_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-portal-secrets
+                  key: PUBLIC_ENTRA_CLIENT_ID
+                  optional: true
+            - name: PUBLIC_ENTRA_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-portal-secrets
+                  key: PUBLIC_ENTRA_TENANT_ID
+                  optional: true
+            - name: MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agent-warden-portal-secrets
+                  key: MCP_AUTH_TOKEN
+                  optional: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 8
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

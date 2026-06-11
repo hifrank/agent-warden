@@ -1,0 +1,13 @@
+# Application Gateway for Containers resource managed by the ALB Controller.
+# The Gateway in gateway.yaml references this object via:
+#   alb.networking.azure.io/alb-namespace: agent-warden-system
+#   alb.networking.azure.io/alb-name: agent-warden-alb-runtime
+---
+apiVersion: alb.networking.azure.io/v1
+kind: ApplicationLoadBalancer
+metadata:
+  name: agent-warden-alb-runtime
+  namespace: agent-warden-system
+spec:
+  associations:
+    - /subscriptions/528423b5-a9b1-413b-a582-27dc93b0fc78/resourceGroups/rg-awarden-dev/providers/Microsoft.Network/virtualNetworks/vnet-awarden-dev/subnets/snet-agc-runtime

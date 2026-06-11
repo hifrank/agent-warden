@@ -1,0 +1,12 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: portal-tls
+  namespace: agent-warden-system
+spec:
+  secretName: portal-tls
+  dnsNames:
+    - agent-warden.aifrank.art
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer

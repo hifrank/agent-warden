@@ -27,3 +27,14 @@ Thumbs.db
 .env
 .env.*
 tfplan*
+
+# Local Agent 365 generated config (contains client secret)
+a365.generated.config.json
+a365.config.json
+
+# Local tool caches and logs
+.vite/
+*.log
+
+# Local packaged artifacts
+*.zip

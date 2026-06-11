@@ -1,0 +1,116 @@
+# -- Dogfood tenant: df-demo (subscription 528423b5, tenant dab94ed2)
+tenantId: df-demo
+tier: pro
+
+image:
+  repository: acrawardendev.azurecr.io/openclaw
+  tag: "2026.3.12"
+  pullPolicy: IfNotPresent
+
+keyVault:
+  name: kv-df-demo
+  tenantIdEntra: "dab94ed2-4cee-4b36-b007-6618f570b4a3"
+  clientId: "f2ebc793-5f0f-4057-a3dc-ee41d8db0945"
+
+cosmos:
+  endpoint: "https://cosmos-awarden-dev.documents.azure.com:443/"
+  database: "agent-warden"
+
+azureOpenAI:
+  enabled: false
+  baseModel: kimi-k2.5
+
+memoryIndexRebuild:
+  enabled: false
+
+litellmProxy:
+  enabled: true
+  shared: true
+  defaultModel: kimi-k2.5
+  masterKey: "shared-litellm-master-key-2026"
+  grok4Fast: false
+  additionalModels:
+    - id: gpt-5.1
+      name: "GPT-5.1 (Azure)"
+      reasoning: false
+      input: ["text", "image"]
+      contextWindow: 128000
+      maxTokens: 16384
+  logLevel: "WARNING"
+  image:
+    repository: litellm/litellm
+    tag: "v1.82.0-stable"
+    pullPolicy: IfNotPresent
+
+# -- DLP plugin: Microsoft Purview processContent API
+purviewDlpPlugin:
+  enabled: true
+  mode: "enforce"
+  layers:
+    promptGuard: true
+    outputScanner: true
+    inputAudit: true
+  purviewEnabled: true
+  purviewUserId: "21bbd518-a20d-41a6-a5da-78e097fda3e5"
+  purviewTenantId: "dab94ed2-4cee-4b36-b007-6618f570b4a3"
+  image:
+    repository: acrawardendev.azurecr.io/purview-dlp-plugin
+    tag: "0.5.5"
+    pullPolicy: IfNotPresent
+
+# -- SaaS proxy sidecar
+saasProxy:
+  enabled: true
+  port: 9090
+  logLevel: "info"
+  image:
+    repository: acrawardendev.azurecr.io/agent-warden-saas-proxy
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+# -- Browser init: disabled (image build failed)
+browserInit:
+  enabled: false
+
+# -- Agents View (OTel GenAI spans)
+agentsViewPlugin:
+  enabled: true
+  otelEndpoint: "http://otel-collector.agent-warden-system.svc.cluster.local:4318/v1/traces"
+  image:
+    repository: acrawardendev.azurecr.io/agents-view-plugin
+    tag: "0.3.2"
+    pullPolicy: IfNotPresent
+
+# -- Disable diagnostics-otel (agents-view handles tracing)
+diagnosticsOtel:
+  enabled: false
+
+# -- Heartbeat sidecar: disabled (OTel collector not deployed)
+heartbeat:
+  enabled: false
+
+# -- Channels
+channels:
+  telegram:
+    enabled: true
+
+# -- Gateway API HTTPRoute
+gateway:
+  enabled: true
+  name: "agent-warden-gateway"
+  namespace: "agent-warden-system"
+  hostname: "df-demo.agent-warden.dev"
+
+# -- A365 Observability Plugin (disabled — export 403 unresolved)
+a365Plugin:
+  enabled: false
+  # m365TenantId: "dab94ed2-4cee-4b36-b007-6618f570b4a3"
+  # azureTenantId: "dab94ed2-4cee-4b36-b007-6618f570b4a3"
+  # image:
+  #   repository: acrawardendev.azurecr.io/a365-plugin
+  #   tag: "0.2.0"
+  #   pullPolicy: IfNotPresent
+
+serviceAccount:
+  annotations:
+    azure.workload.identity/client-id: "f2ebc793-5f0f-4057-a3dc-ee41d8db0945"

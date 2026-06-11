@@ -1,0 +1,23 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agent-warden-portal
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: agent-warden-portal
+    app.kubernetes.io/part-of: agent-warden
+spec:
+  parentRefs:
+    - name: agent-warden-gateway
+      namespace: agent-warden-system
+      sectionName: https-portal
+  hostnames:
+    - agent-warden.aifrank.art
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: agent-warden-portal
+          port: 80

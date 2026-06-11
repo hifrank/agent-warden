@@ -1,0 +1,55 @@
+tenantId: observability-test
+tier: free
+
+keyVault:
+  name: kv-observability-test
+  clientId: "09adc074-7577-4754-8584-e22a90a1e8ff"
+  tenantIdEntra: "9a72f9b7-227c-4b28-9aca-de6c1ec605a4"
+
+image:
+  repository: acragentwardendev.azurecr.io/openclaw
+  tag: "2026.3.12"
+
+saasProxy:
+  image:
+    repository: acragentwardendev.azurecr.io/agent-warden-saas-proxy
+
+browserInit:
+  enabled: true
+  image:
+    pullPolicy: Always
+
+purviewDlpPlugin:
+  enabled: false
+
+agentsViewPlugin:
+  enabled: true
+
+a365Plugin:
+  enabled: false
+
+memoryIndexRebuild:
+  enabled: false
+
+channels:
+  telegram:
+    enabled: true
+
+gateway:
+  heapSizeMb: 3072
+
+resources:
+  free:
+    requests:
+      cpu: "250m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+azureOpenAI:
+  baseModel: "gpt-5.4"
+
+litellmProxy:
+  shared: true
+  masterKey: "sk-litellm-af90d4f7b98912def2f5545012cb7436"

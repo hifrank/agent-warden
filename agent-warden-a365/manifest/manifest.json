@@ -1,0 +1,32 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/vdevPreview/MicrosoftTeams.schema.json",
+  "id": "60e56f90-f29e-4b97-ac94-6b0500106f77",
+  "name": {
+    "short": "Agent Warden Blueprint",
+    "full": "Agent Warden Blueprint"
+  },
+  "description": {
+    "short": "AI agent governance platform for monitoring and securing AI agents.",
+    "full": "Agent Warden is an AI agent governance platform that monitors, secures, and audits AI agent activities across your organization. It provides real-time observability, DLP policy enforcement, and compliance reporting for AI agents operating in Microsoft 365."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#9ec9d9",
+  "version": "1.2.0",
+  "manifestVersion": "devPreview",
+  "developer": {
+    "name": "Microsoft Corporation",
+    "mpnId": "",
+    "websiteUrl": "https://go.microsoft.com/fwlink/?LinkId=518028",
+    "privacyUrl": "https://go.microsoft.com/fwlink/?LinkId=518028",
+    "termsOfUseUrl": "https://shares.datatransfer.microsoft.com/assets/Microsoft_Terms_of_Use.html"
+  },
+  "agenticUserTemplates": [
+    {
+      "id": "7b0926a6-c4ee-445a-a913-bd054594bd09",
+      "file": "agenticUserTemplateManifest.json"
+    }
+  ]
+}

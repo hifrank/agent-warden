@@ -1,0 +1,67 @@
+{
+  "id": "agent-warden-a365",
+  "name": "Agent Warden A365 Observability",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin that emits Agent 365 Observability SDK spans (InvokeAgent, ExecuteTool, Inference) to the M365 security stack for unified agent governance via Defender, Purview DSPM, and Admin Center.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "agentId": {
+        "type": "string",
+        "default": "",
+        "description": "Agentic app instance ID (from Agent Blueprint provisioning)"
+      },
+      "agentName": {
+        "type": "string",
+        "default": "Agent Warden",
+        "description": "Display name for the agent in M365 Admin Center"
+      },
+      "agentBlueprintId": {
+        "type": "string",
+        "default": "",
+        "description": "Entra application ID of the Agent Blueprint"
+      },
+      "agentUpn": {
+        "type": "string",
+        "default": "",
+        "description": "Agentic user UPN (e.g. agentwarden@contoso.onmicrosoft.com)"
+      },
+      "agenticUserId": {
+        "type": "string",
+        "default": "",
+        "description": "Agentic user Object ID in Entra"
+      },
+      "aaInstanceId": {
+        "type": "string",
+        "default": "",
+        "description": "Autonomous Agent Instance ID (AA_INSTANCE_ID) — required for T1/T2/FIC token flow"
+      },
+      "tenantId": {
+        "type": "string",
+        "default": "",
+        "description": "M365 tenant ID"
+      },
+      "channelName": {
+        "type": "string",
+        "default": "api",
+        "description": "Default channel name (telegram, api, teams, etc.)"
+      },
+      "enableA365Exporter": {
+        "type": "boolean",
+        "default": false,
+        "description": "true = export to agent365.svc.cloud.microsoft, false = console exporter only"
+      },
+      "serviceName": {
+        "type": "string",
+        "default": "openclaw-gateway",
+        "description": "OTel service name for resource attributes"
+      },
+      "serviceNamespace": {
+        "type": "string",
+        "default": "agent-warden",
+        "description": "OTel service namespace for resource attributes"
+      }
+    }
+  }
+}

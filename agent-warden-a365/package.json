@@ -1,0 +1,19 @@
+{
+  "name": "agent-warden-a365",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "dependencies": {
+    "@langchain/core": "^1.1.38",
+    "@langchain/openai": "^1.4.1",
+    "@microsoft/agents-a365-observability": "^0.1.0-preview.126",
+    "@microsoft/agents-a365-observability-extensions-langchain": "^0.1.0-preview.126",
+    "@microsoft/agents-a365-runtime": "^0.1.0-preview",
+    "langchain": "^1.2.39"
+  }
+}

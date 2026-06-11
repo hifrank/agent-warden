@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-warden-portal
+  namespace: agent-warden-system
+  labels:
+    app.kubernetes.io/name: agent-warden-portal
+    app.kubernetes.io/part-of: agent-warden
+  annotations:
+    azure.workload.identity/client-id: "63e88f9f-8d2c-4b88-b29f-ddf2b6728c66"
